@@ -87,6 +87,7 @@ const AnalyticsPage = () => {
 
   // UI states
   const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(null); // null = unknown, true = connected, false = unavailable
   const [activeTab, setActiveTab] = useState("performance");
   const [lastUpdate, setLastUpdate] = useState(null);
   const [connectionType, setConnectionType] = useState("polling"); // "websocket" | "polling"
@@ -278,54 +279,72 @@ const AnalyticsPage = () => {
     }
   }, [checkAlerts, driftStatus]);
 
-  // Fetch all analytics data
+  // Fetch all analytics data with individual error handling
   const fetchAllData = useCallback(async () => {
-    try {
-      const [
-        usageRes,
-        latencyRes,
-        errorsRes,
-        driftRes,
-        healthRes,
-        graphRes,
-        trendsRes,
-        modelsRes,
-        realtimeRes,
-      ] = await Promise.all([
-        axios.get(`${API}/analytics/engine-usage`),
-        axios.get(`${API}/analytics/engine-latency`),
-        axios.get(`${API}/analytics/engine-errors`),
-        axios.get(`${API}/analytics/drift-status`),
-        axios.get(`${API}/analytics/system-health`),
-        axios.get(`${API}/analytics/pipeline-graph`),
-        axios.get(`${API}/analytics/confidence-trends`),
-        axios.get(`${API}/analytics/model-comparison`),
-        axios.get(`${API}/analytics/realtime-stats`),
-      ]);
+    const fetchOne = async (url) => {
+      try {
+        const res = await axios.get(url, { timeout: 10000 });
+        return { ok: true, data: res.data };
+      } catch (e) {
+        return { ok: false, data: null };
+      }
+    };
 
-      setEngineUsage(usageRes.data);
-      setEngineLatency(latencyRes.data);
-      setEngineErrors(errorsRes.data);
-      setDriftStatus(driftRes.data);
-      setSystemHealth(healthRes.data);
-      setPipelineGraph(graphRes.data);
-      setConfidenceTrends(trendsRes.data);
-      setModelComparison(modelsRes.data.models || []);
-      setRealtimeStats(realtimeRes.data);
+    const [
+      usageRes,
+      latencyRes,
+      errorsRes,
+      driftRes,
+      healthRes,
+      graphRes,
+      trendsRes,
+      modelsRes,
+      realtimeRes,
+    ] = await Promise.all([
+      fetchOne(`${API}/analytics/engine-usage`),
+      fetchOne(`${API}/analytics/engine-latency`),
+      fetchOne(`${API}/analytics/engine-errors`),
+      fetchOne(`${API}/analytics/drift-status`),
+      fetchOne(`${API}/analytics/system-health`),
+      fetchOne(`${API}/analytics/pipeline-graph`),
+      fetchOne(`${API}/analytics/confidence-trends`),
+      fetchOne(`${API}/analytics/model-comparison`),
+      fetchOne(`${API}/analytics/realtime-stats`),
+    ]);
+
+    const anyConnected = [
+      usageRes, latencyRes, errorsRes, driftRes, healthRes,
+      graphRes, trendsRes, modelsRes, realtimeRes,
+    ].some((r) => r.ok);
+
+    setConnected(anyConnected);
+
+    if (usageRes.ok) setEngineUsage(usageRes.data);
+    if (latencyRes.ok) setEngineLatency(latencyRes.data);
+    if (errorsRes.ok) setEngineErrors(errorsRes.data);
+    if (driftRes.ok) setDriftStatus(driftRes.data);
+    if (healthRes.ok) setSystemHealth(healthRes.data);
+    if (graphRes.ok) setPipelineGraph(graphRes.data);
+    if (trendsRes.ok) setConfidenceTrends(trendsRes.data);
+    if (modelsRes.ok) setModelComparison(modelsRes.data?.models || []);
+    if (realtimeRes.ok) setRealtimeStats(realtimeRes.data);
+
+    if (anyConnected) {
       setLastUpdate(new Date());
-
-      updateSparklines(usageRes.data, latencyRes.data);
-      checkAlerts(healthRes.data, driftRes.data);
-    } catch (e) {
-      console.error("Failed to fetch analytics:", e);
-      toast.error("Failed to fetch analytics data");
-    } finally {
-      setLoading(false);
+      if (latencyRes.ok && usageRes.ok) {
+        updateSparklines(usageRes.data, latencyRes.data);
+      }
+      if (healthRes.ok && driftRes.ok) {
+        checkAlerts(healthRes.data, driftRes.data);
+      }
     }
+
+    setLoading(false);
   }, [checkAlerts, updateSparklines]);
 
   // Fetch realtime stats only (for polling fallback)
   const fetchRealtimeOnly = useCallback(async () => {
+    if (!connected) return;
     if (
       connectionType === "websocket" &&
       wsRef.current?.readyState === WebSocket.OPEN
@@ -334,9 +353,9 @@ const AnalyticsPage = () => {
 
     try {
       const [realtimeRes, healthRes, driftRes] = await Promise.all([
-        axios.get(`${API}/analytics/realtime-stats`),
-        axios.get(`${API}/analytics/system-health`),
-        axios.get(`${API}/analytics/drift-status`),
+        axios.get(`${API}/analytics/realtime-stats`, { timeout: 8000 }),
+        axios.get(`${API}/analytics/system-health`, { timeout: 8000 }),
+        axios.get(`${API}/analytics/drift-status`, { timeout: 8000 }),
       ]);
 
       setPrevHealth(systemHealth);
@@ -348,7 +367,7 @@ const AnalyticsPage = () => {
     } catch (e) {
       console.error("Realtime fetch error:", e);
     }
-  }, [connectionType, systemHealth, checkAlerts]);
+  }, [connectionType, connected, systemHealth, checkAlerts]);
 
   // Initial load
   useEffect(() => {
@@ -361,6 +380,18 @@ const AnalyticsPage = () => {
         clearTimeout(reconnectTimeoutRef.current);
     };
   }, [fetchAllData, connectWebSocket]);
+
+  // Loading timeout — if still loading after 12s, mark backend unavailable
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      if (loading) {
+        setConnected(false);
+        setLoading(false);
+      }
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   // Polling every 5 seconds (fallback)
   useEffect(() => {
@@ -678,7 +709,7 @@ const AnalyticsPage = () => {
           </Link>
           <div className="header-content">
             <h1>📊 Monitoring & Analytics</h1>
-            <p className="subtitle">Loading dashboard...</p>
+            <p className="subtitle">Connecting to analytics backend...</p>
           </div>
         </header>
         <div className="skeleton-grid">
@@ -700,6 +731,31 @@ const AnalyticsPage = () => {
     >
       <Toaster position="top-right" theme={theme} richColors />
 
+      {connected === false && (
+        <div
+          style={{
+            background: "rgba(230, 0, 122, 0.08)",
+            border: "1px solid rgba(230, 0, 122, 0.25)",
+            borderRadius: 6,
+            padding: "14px 20px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 12,
+            color: "var(--pink, #E6007A)",
+          }}
+          data-testid="backend-unavailable-banner"
+        >
+          <span style={{ fontSize: 18 }}>⚠</span>
+          <span>
+            Backend not connected — analytics data will appear when the
+            HIC backend is available.
+          </span>
+        </div>
+      )}
+
       {showSettings && <SettingsModal />}
 
       <header className="page-header">
@@ -713,9 +769,9 @@ const AnalyticsPage = () => {
           </p>
         </div>
         <div className="header-actions">
-          <div className={`connection-badge ${connectionType}`}>
-            <span className={`conn-dot ${connectionType}`}></span>
-            {connectionType === "websocket" ? "LIVE" : "POLLING"}
+          <div className={`connection-badge ${connected === false ? "disconnected" : connectionType}`}>
+            <span className={`conn-dot ${connected === false ? "disconnected" : connectionType}`}></span>
+            {connected === false ? "DISCONNECTED" : connectionType === "websocket" ? "LIVE" : "POLLING"}
           </div>
           {lastUpdate && (
             <span className="last-update" data-testid="last-update">

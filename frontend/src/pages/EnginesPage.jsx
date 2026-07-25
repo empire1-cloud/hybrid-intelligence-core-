@@ -224,6 +224,7 @@ const EnginesPage = () => {
   const [engines, setEngines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEngine, setSelectedEngine] = useState(null);
+  const [connected, setConnected] = useState(null);
 
   useEffect(() => {
     fetchEngines();
@@ -231,10 +232,13 @@ const EnginesPage = () => {
 
   const fetchEngines = async () => {
     try {
-      const res = await axios.get(`${API}/health`);
+      const res = await axios.get(`${API}/health`, { timeout: 10000 });
       setEngines(res.data.engines || []);
+      setConnected(true);
     } catch (e) {
       console.error(e);
+      setConnected(false);
+      setEngines([]);
     } finally {
       setLoading(false);
     }
@@ -277,7 +281,16 @@ const EnginesPage = () => {
       <header className="page-header">
         <Link to="/" className="back-link">← Home</Link>
         <h1>📋 Engine Dashboard</h1>
-        <p className="subtitle">{engines.length} AI engines available • Click "Test" to try any engine</p>
+        <p className="subtitle">
+          {connected === false
+            ? "Backend not connected — engine registry unavailable"
+            : `${engines.length} AI engines available • Click "Test" to try any engine`}
+        </p>
+        {connected === false && (
+          <div style={{ marginTop: 12, padding: "12px 16px", background: "rgba(232,185,35,0.08)", border: "1px solid rgba(232,185,35,0.2)", borderRadius: 4, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "#E8B923" }}>
+            ⚠ Backend API is not reachable. Engine registry requires a running HIC backend at {API}. Engine testing is unavailable until the backend connects.
+          </div>
+        )}
       </header>
 
       <div className="engines-table-container">

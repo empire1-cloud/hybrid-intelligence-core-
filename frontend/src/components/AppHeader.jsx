@@ -10,20 +10,11 @@ import { useAuth } from "../context/AuthContext";
 import TeamSwitcher from "./TeamSwitcher";
 
 const EmpireMark = () => (
-  <svg
-    width="30"
-    height="30"
-    viewBox="0 0 30 30"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <rect width="30" height="30" rx="4" fill="#050505" />
-    <path
-      d="M6 8h3v14H6V8zm7 0h3l4 8.5V8h3v14h-3l-4-8.5V22h-3V8z"
-      fill="#f2f2f4"
-    />
-    <rect x="22" y="8" width="3" height="14" fill="#E6007A" />
-  </svg>
+  <img
+    src="/empire1_logo.jpeg"
+    alt="Empire-1"
+    style={{ width: 30, height: 30, objectFit: "contain", borderRadius: 4 }}
+  />
 );
 
 const AppHeader = () => {

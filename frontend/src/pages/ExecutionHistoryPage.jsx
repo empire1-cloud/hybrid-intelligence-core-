@@ -8,6 +8,7 @@ const ExecutionHistoryPage = () => {
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(null); // null = unknown, true = connected, false = unavailable
   const [total, setTotal] = useState(0);
   
   // Filters
@@ -31,13 +32,15 @@ const ExecutionHistoryPage = () => {
       if (statusFilter) params.append("status", statusFilter);
       if (sourceFilter) params.append("source", sourceFilter);
       
-      const res = await authAxios().get(`/history?${params.toString()}`);
-      setLogs(res.data.logs);
-      setTotal(res.data.total);
+      const res = await authAxios().get(`/history?${params.toString()}`, { timeout: 10000 });
+      setLogs(res.data.logs || []);
+      setTotal(res.data.total || 0);
+      setConnected(true);
     } catch (e) {
-      console.error(e);
+      console.error("History fetch failed:", e);
       setLogs([]);
       setTotal(0);
+      setConnected(false);
     } finally {
       setLoading(false);
     }
@@ -45,10 +48,12 @@ const ExecutionHistoryPage = () => {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await authAxios().get(`/history/stats`);
+      const res = await authAxios().get(`/history/stats`, { timeout: 10000 });
       setStats(res.data);
+      setConnected(true);
     } catch (e) {
-      console.error(e);
+      console.error("History stats fetch failed:", e);
+      setConnected(false);
     }
   }, [authAxios]);
 
@@ -56,6 +61,18 @@ const ExecutionHistoryPage = () => {
     fetchLogs();
     fetchStats();
   }, [fetchLogs, fetchStats, currentTeam]);
+
+  // Loading timeout — if still loading after 12s, mark backend unavailable
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      if (loading) {
+        setConnected(false);
+        setLoading(false);
+      }
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   const clearHistory = async () => {
     if (!window.confirm("Are you sure you want to clear all execution history?")) return;
@@ -113,6 +130,32 @@ const ExecutionHistoryPage = () => {
         <h1>📜 Execution History</h1>
         <p className="subtitle">Log of all engine calls and pipeline runs</p>
       </header>
+
+      {/* Backend unavailable banner */}
+      {connected === false && (
+        <div
+          style={{
+            background: "rgba(230, 0, 122, 0.08)",
+            border: "1px solid rgba(230, 0, 122, 0.25)",
+            borderRadius: 6,
+            padding: "14px 20px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 12,
+            color: "var(--pink, #E6007A)",
+          }}
+          data-testid="history-backend-unavailable"
+        >
+          <span style={{ fontSize: 18 }}>⚠</span>
+          <span>
+            Execution history is not connected — data will appear when the HIC
+            backend is available.
+          </span>
+        </div>
+      )}
 
       {/* Stats Cards */}
       {stats && (
@@ -213,12 +256,19 @@ const ExecutionHistoryPage = () => {
         {loading ? (
           <div className="loading-box">
             <div className="spinner"></div>
+            <p style={{ color: "var(--ink-4, #888)", fontSize: 13, marginTop: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+              Connecting to history backend...
+            </p>
           </div>
         ) : logs.length === 0 ? (
-          <div className="empty-state">
+          <div className="empty-state" data-testid="history-empty">
             <span className="empty-icon">📜</span>
-            <h3>No Execution Logs</h3>
-            <p>Run some engines to see execution history here</p>
+            <h3>{connected === false ? "Backend Not Connected" : "No Execution Logs"}</h3>
+            <p>
+              {connected === false
+                ? "Execution history requires the HIC backend to be running."
+                : "Run some engines to see execution history here"}
+            </p>
           </div>
         ) : (
           <table className="history-table" data-testid="history-table">
