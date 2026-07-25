@@ -88,6 +88,7 @@ const AnalyticsPage = () => {
   // UI states
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(null); // null = unknown, true = connected, false = unavailable
+  const [endpointStatus, setEndpointStatus] = useState({}); // { "engine-usage": "ok"|"fail"|"loading", ... }
   const [activeTab, setActiveTab] = useState("performance");
   const [lastUpdate, setLastUpdate] = useState(null);
   const [connectionType, setConnectionType] = useState("polling"); // "websocket" | "polling"
@@ -281,6 +282,23 @@ const AnalyticsPage = () => {
 
   // Fetch all analytics data with individual error handling
   const fetchAllData = useCallback(async () => {
+    const endpoints = [
+      { key: "engine-usage", url: `${API}/analytics/engine-usage` },
+      { key: "engine-latency", url: `${API}/analytics/engine-latency` },
+      { key: "engine-errors", url: `${API}/analytics/engine-errors` },
+      { key: "drift-status", url: `${API}/analytics/drift-status` },
+      { key: "system-health", url: `${API}/analytics/system-health` },
+      { key: "pipeline-graph", url: `${API}/analytics/pipeline-graph` },
+      { key: "confidence-trends", url: `${API}/analytics/confidence-trends` },
+      { key: "model-comparison", url: `${API}/analytics/model-comparison` },
+      { key: "realtime-stats", url: `${API}/analytics/realtime-stats` },
+    ];
+
+    // Mark all as loading
+    const initial = {};
+    endpoints.forEach((ep) => { initial[ep.key] = "loading"; });
+    setEndpointStatus(initial);
+
     const fetchOne = async (url) => {
       try {
         const res = await axios.get(url, { timeout: 10000 });
@@ -290,34 +308,34 @@ const AnalyticsPage = () => {
       }
     };
 
-    const [
-      usageRes,
-      latencyRes,
-      errorsRes,
-      driftRes,
-      healthRes,
-      graphRes,
-      trendsRes,
-      modelsRes,
-      realtimeRes,
-    ] = await Promise.all([
-      fetchOne(`${API}/analytics/engine-usage`),
-      fetchOne(`${API}/analytics/engine-latency`),
-      fetchOne(`${API}/analytics/engine-errors`),
-      fetchOne(`${API}/analytics/drift-status`),
-      fetchOne(`${API}/analytics/system-health`),
-      fetchOne(`${API}/analytics/pipeline-graph`),
-      fetchOne(`${API}/analytics/confidence-trends`),
-      fetchOne(`${API}/analytics/model-comparison`),
-      fetchOne(`${API}/analytics/realtime-stats`),
-    ]);
+    const results = await Promise.all(
+      endpoints.map((ep) => fetchOne(ep.url))
+    );
 
-    const anyConnected = [
-      usageRes, latencyRes, errorsRes, driftRes, healthRes,
-      graphRes, trendsRes, modelsRes, realtimeRes,
-    ].some((r) => r.ok);
+    const newStatus = {};
+    let okCount = 0;
+    let failCount = 0;
+    endpoints.forEach((ep, i) => {
+      if (results[i].ok) {
+        newStatus[ep.key] = "ok";
+        okCount++;
+      } else {
+        newStatus[ep.key] = "fail";
+        failCount++;
+      }
+    });
+    setEndpointStatus(newStatus);
 
-    setConnected(anyConnected);
+    // connected = true if ALL succeeded, false if ALL failed, null if partial
+    if (failCount === 0) {
+      setConnected(true);
+    } else if (okCount === 0) {
+      setConnected(false);
+    } else {
+      setConnected(true); // partially connected — still usable
+    }
+
+    const [usageRes, latencyRes, errorsRes, driftRes, healthRes, graphRes, trendsRes, modelsRes, realtimeRes] = results;
 
     if (usageRes.ok) setEngineUsage(usageRes.data);
     if (latencyRes.ok) setEngineLatency(latencyRes.data);
@@ -329,7 +347,7 @@ const AnalyticsPage = () => {
     if (modelsRes.ok) setModelComparison(modelsRes.data?.models || []);
     if (realtimeRes.ok) setRealtimeStats(realtimeRes.data);
 
-    if (anyConnected) {
+    if (okCount > 0) {
       setLastUpdate(new Date());
       if (latencyRes.ok && usageRes.ok) {
         updateSparklines(usageRes.data, latencyRes.data);
@@ -756,6 +774,30 @@ const AnalyticsPage = () => {
         </div>
       )}
 
+      {connected === true && Object.values(endpointStatus).some((s) => s === "fail") && (
+        <div
+          style={{
+            background: "rgba(232,185,35,0.08)",
+            border: "1px solid rgba(232,185,35,0.2)",
+            borderRadius: 6,
+            padding: "14px 20px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 12,
+            color: "#E8B923",
+          }}
+          data-testid="analytics-partial-warning"
+        >
+          <span style={{ fontSize: 18 }}>⚠</span>
+          <span>
+            Partially connected — {Object.values(endpointStatus).filter((s) => s === "fail").length} of {Object.keys(endpointStatus).length} endpoints unreachable. Available data is shown below.
+          </span>
+        </div>
+      )}
+
       {showSettings && <SettingsModal />}
 
       <header className="page-header">
@@ -769,9 +811,9 @@ const AnalyticsPage = () => {
           </p>
         </div>
         <div className="header-actions">
-          <div className={`connection-badge ${connected === false ? "disconnected" : connectionType}`}>
-            <span className={`conn-dot ${connected === false ? "disconnected" : connectionType}`}></span>
-            {connected === false ? "DISCONNECTED" : connectionType === "websocket" ? "LIVE" : "POLLING"}
+          <div className={`connection-badge ${connected === false ? "disconnected" : Object.values(endpointStatus).some((s) => s === "fail") ? "partial" : connectionType}`}>
+            <span className={`conn-dot ${connected === false ? "disconnected" : Object.values(endpointStatus).some((s) => s === "fail") ? "partial" : connectionType}`}></span>
+            {connected === false ? "DISCONNECTED" : Object.values(endpointStatus).some((s) => s === "fail") ? "PARTIAL" : connectionType === "websocket" ? "LIVE" : "POLLING"}
           </div>
           {lastUpdate && (
             <span className="last-update" data-testid="last-update">

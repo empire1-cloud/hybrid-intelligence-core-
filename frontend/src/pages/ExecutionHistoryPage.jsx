@@ -8,9 +8,14 @@ const ExecutionHistoryPage = () => {
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(null); // null = unknown, true = connected, false = unavailable
+  const [logsConnected, setLogsConnected] = useState(null); // null = unknown, true/false = resolved
+  const [statsConnected, setStatsConnected] = useState(null);
   const [total, setTotal] = useState(0);
-  
+
+  const connected = logsConnected === false && statsConnected === false ? false
+    : logsConnected === true || statsConnected === true ? true
+    : null;
+
   // Filters
   const [search, setSearch] = useState("");
   const [engineFilter, setEngineFilter] = useState("");
@@ -35,12 +40,12 @@ const ExecutionHistoryPage = () => {
       const res = await authAxios().get(`/history?${params.toString()}`, { timeout: 10000 });
       setLogs(res.data.logs || []);
       setTotal(res.data.total || 0);
-      setConnected(true);
+      setLogsConnected(true);
     } catch (e) {
       console.error("History fetch failed:", e);
       setLogs([]);
       setTotal(0);
-      setConnected(false);
+      setLogsConnected(false);
     } finally {
       setLoading(false);
     }
@@ -50,10 +55,10 @@ const ExecutionHistoryPage = () => {
     try {
       const res = await authAxios().get(`/history/stats`, { timeout: 10000 });
       setStats(res.data);
-      setConnected(true);
+      setStatsConnected(true);
     } catch (e) {
       console.error("History stats fetch failed:", e);
-      setConnected(false);
+      setStatsConnected(false);
     }
   }, [authAxios]);
 
@@ -62,12 +67,12 @@ const ExecutionHistoryPage = () => {
     fetchStats();
   }, [fetchLogs, fetchStats, currentTeam]);
 
-  // Loading timeout — if still loading after 12s, mark backend unavailable
+  // Loading timeout — if still loading after 12s, mark logs as unavailable
   useEffect(() => {
     if (!loading) return;
     const timer = setTimeout(() => {
       if (loading) {
-        setConnected(false);
+        setLogsConnected(false);
         setLoading(false);
       }
     }, 12000);
@@ -153,6 +158,29 @@ const ExecutionHistoryPage = () => {
           <span>
             Execution history is not connected — data will appear when the HIC
             backend is available.
+          </span>
+        </div>
+      )}
+      {connected === true && logsConnected === false && (
+        <div
+          style={{
+            background: "rgba(232,185,35,0.08)",
+            border: "1px solid rgba(232,185,35,0.2)",
+            borderRadius: 6,
+            padding: "14px 20px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 12,
+            color: "#E8B923",
+          }}
+          data-testid="history-partial-warning"
+        >
+          <span style={{ fontSize: 18 }}>⚠</span>
+          <span>
+            Stats are available but execution logs could not be reached.
           </span>
         </div>
       )}

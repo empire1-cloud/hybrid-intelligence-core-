@@ -2825,6 +2825,18 @@ body {
   color: var(--accent-blue);
 }
 
+.connection-badge.partial {
+  background: rgba(232, 185, 35, 0.15);
+  border: 1px solid rgba(232, 185, 35, 0.3);
+  color: #E8B923;
+}
+
+.connection-badge.disconnected {
+  background: rgba(230, 0, 122, 0.15);
+  border: 1px solid rgba(230, 0, 122, 0.3);
+  color: var(--pink, #E6007A);
+}
+
 .conn-dot {
   width: 8px;
   height: 8px;
@@ -2839,6 +2851,15 @@ body {
 .conn-dot.polling {
   background: var(--accent-blue);
   animation: connPulse 5s ease-in-out infinite;
+}
+
+.conn-dot.partial {
+  background: #E8B923;
+  animation: connPulse 3s ease-in-out infinite;
+}
+
+.conn-dot.disconnected {
+  background: var(--pink, #E6007A);
 }
 
 @keyframes connPulse {
