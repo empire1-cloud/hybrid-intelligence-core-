@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { useAuth } from "../context/AuthContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const APPROVED_TEST_MODEL = "gpt-4o-mini";
@@ -51,6 +52,7 @@ const getIcon = (name) => {
 };
 
 const TestModal = ({ engine, config, onClose }) => {
+  const { authAxios } = useAuth();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -63,18 +65,15 @@ const TestModal = ({ engine, config, onClose }) => {
 
     try {
       let response;
-      const url = `${API}${config.path}`;
-
       if (config.method === "GET") {
-        response = await axios.get(url, { timeout: 120000 });
+        response = await authAxios().get(config.path, { timeout: 120000 });
       } else {
         const parsedPayload = JSON.parse(payload);
         if (!parsedPayload.model && engine !== 'hybrid_intelligence_core') {
           parsedPayload.model = APPROVED_TEST_MODEL;
         }
-        response = await axios.post(url, parsedPayload, { timeout: 120000 });
+        response = await authAxios().post(config.path, parsedPayload, { timeout: 120000 });
       }
-
       setResult(response.data);
     } catch (requestError) {
       setError(requestError.response?.data?.detail || requestError.message || "Request failed");
@@ -86,35 +85,17 @@ const TestModal = ({ engine, config, onClose }) => {
   return (
     <div className="modal-overlay" onClick={onClose} data-testid="test-modal">
       <div className="modal-content" onClick={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{formatEngineName(engine)}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
+        <div className="modal-header"><h2>{formatEngineName(engine)}</h2><button className="modal-close" onClick={onClose}>×</button></div>
         <div className="modal-body">
           <div className="modal-info">
             <p><strong>Endpoint:</strong> <code>{config.method} {config.path}</code></p>
             <p><strong>Description:</strong> {config.desc}</p>
             {config.method === 'POST' && <p><strong>Model policy:</strong> approved non-Google models only</p>}
           </div>
-
-          {config.method === "POST" && (
-            <div className="payload-section">
-              <label>Request Payload:</label>
-              <textarea value={payload} onChange={(event) => setPayload(event.target.value)} className="payload-editor" rows={8} data-testid="payload-editor" />
-            </div>
-          )}
-
-          <button className="run-test-btn" onClick={runTest} disabled={loading} data-testid="run-test-btn">
-            {loading ? <><span className="btn-spinner"></span> Running...</> : <><span>▶</span> Run Test</>}
-          </button>
-
+          {config.method === "POST" && <div className="payload-section"><label>Request Payload:</label><textarea value={payload} onChange={(event) => setPayload(event.target.value)} className="payload-editor" rows={8} data-testid="payload-editor" /></div>}
+          <button className="run-test-btn" onClick={runTest} disabled={loading} data-testid="run-test-btn">{loading ? <><span className="btn-spinner"></span> Running...</> : <><span>▶</span> Run Test</>}</button>
           {error && <div className="modal-error" data-testid="modal-error"><strong>Error:</strong> {error}</div>}
-          {result && (
-            <div className="modal-result" data-testid="modal-result">
-              <div className="result-header"><strong>Response:</strong><span className="success-badge">✓ Success</span></div>
-              <pre className="result-json">{JSON.stringify(result, null, 2)}</pre>
-            </div>
-          )}
+          {result && <div className="modal-result" data-testid="modal-result"><div className="result-header"><strong>Response:</strong><span className="success-badge">✓ Success</span></div><pre className="result-json">{JSON.stringify(result, null, 2)}</pre></div>}
         </div>
       </div>
     </div>
@@ -142,18 +123,11 @@ const EnginesPage = () => {
 
   const canTest = (engine) => Boolean(ENGINE_CONFIG[engine]?.path);
 
-  if (loading) {
-    return <div className="page-container"><div className="loading-box"><div className="spinner"></div></div></div>;
-  }
+  if (loading) return <div className="page-container"><div className="loading-box"><div className="spinner"></div></div></div>;
 
   return (
     <div className="page-container" data-testid="engines-page">
-      <header className="page-header">
-        <Link to="/" className="back-link">← Home</Link>
-        <h1>📋 Engine Dashboard</h1>
-        <p className="subtitle">{engines.length} AI engines available • Tests use approved non-Google models</p>
-      </header>
-
+      <header className="page-header"><Link to="/" className="back-link">← Home</Link><h1>📋 Engine Dashboard</h1><p className="subtitle">{engines.length} AI engines available • Executions use your workspace allowance</p></header>
       <div className="engines-table-container">
         <table className="engines-table" data-testid="engines-table">
           <thead><tr><th>Engine</th><th>Method</th><th>Endpoint</th><th>Description</th><th>Action</th></tr></thead>
@@ -161,29 +135,12 @@ const EnginesPage = () => {
             {engines.map((engine) => {
               const config = ENGINE_CONFIG[engine] || { path: "-", method: "-", desc: "No description" };
               const testable = canTest(engine);
-              return (
-                <tr key={engine} data-testid={`engine-row-${engine}`}>
-                  <td className="engine-name-cell"><span className="engine-icon">{getIcon(engine)}</span><span>{formatEngineName(engine)}</span></td>
-                  <td className="method-cell">{config.method ? <span className={`method-badge ${config.method.toLowerCase()}`}>{config.method}</span> : <span className="method-badge internal">-</span>}</td>
-                  <td className="endpoint-cell"><code>{config.path || "internal"}</code></td>
-                  <td className="desc-cell">{config.desc}</td>
-                  <td className="action-cell">{testable ? <button className="btn-small btn-test" onClick={() => setSelectedEngine(engine)} data-testid={`test-btn-${engine}`}>Test</button> : <span className="internal-badge">Internal</span>}</td>
-                </tr>
-              );
+              return <tr key={engine} data-testid={`engine-row-${engine}`}><td className="engine-name-cell"><span className="engine-icon">{getIcon(engine)}</span><span>{formatEngineName(engine)}</span></td><td className="method-cell">{config.method ? <span className={`method-badge ${config.method.toLowerCase()}`}>{config.method}</span> : <span className="method-badge internal">-</span>}</td><td className="endpoint-cell"><code>{config.path || "internal"}</code></td><td className="desc-cell">{config.desc}</td><td className="action-cell">{testable ? <button className="btn-small btn-test" onClick={() => setSelectedEngine(engine)} data-testid={`test-btn-${engine}`}>Test</button> : <span className="internal-badge">Internal</span>}</td></tr>;
             })}
           </tbody>
         </table>
       </div>
-
-      <div className="engines-legend">
-        <h4>Legend</h4>
-        <div className="legend-items">
-          <span><span className="method-badge post">POST</span> Requires input payload</span>
-          <span><span className="method-badge get">GET</span> No input required</span>
-          <span><span className="method-badge internal">-</span> Internal engine</span>
-        </div>
-      </div>
-
+      <div className="engines-legend"><h4>Legend</h4><div className="legend-items"><span><span className="method-badge post">POST</span> Counts as an execution</span><span><span className="method-badge get">GET</span> Authenticated read</span><span><span className="method-badge internal">-</span> Internal engine</span></div></div>
       {selectedEngine && ENGINE_CONFIG[selectedEngine] && <TestModal engine={selectedEngine} config={ENGINE_CONFIG[selectedEngine]} onClose={() => setSelectedEngine(null)} />}
     </div>
   );
