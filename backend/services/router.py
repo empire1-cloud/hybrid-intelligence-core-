@@ -2,6 +2,9 @@ from pydantic import BaseModel
 import re
 from enum import Enum
 
+from services.model_policy import QUICK_MODEL, enforce_approved_model
+
+
 class TaskCategory(Enum):
     CODE = "code"
     ANALYSIS = "analysis"
@@ -9,13 +12,15 @@ class TaskCategory(Enum):
     STRATEGY = "strategy"
     GENERAL = "general"
 
+
 class RoutingDecision(BaseModel):
     model: str
     reason: str
 
+
 class RoutingEngine:
-    """Routes requests to optimal model based on task analysis."""
-    
+    """Routes requests to an approved model based on task analysis."""
+
     PATTERNS = {
         TaskCategory.CODE: [
             r"\bcode\b", r"\bfunction\b", r"\bclass\b", r"\bapi\b",
@@ -35,57 +40,58 @@ class RoutingEngine:
             r"\btranslate\b", r"\bconvert\b", r"\blist\b", r"\bsummarize\b"
         ]
     }
-    
+
     CATEGORY_MODEL_MAP = {
         TaskCategory.CODE: "gpt-5.2",
         TaskCategory.ANALYSIS: "claude-sonnet-4.5",
         TaskCategory.STRATEGY: "claude-sonnet-4.5",
-        TaskCategory.QUICK: "gemini-3-flash",
+        TaskCategory.QUICK: QUICK_MODEL,
         TaskCategory.GENERAL: "gpt-5.2"
     }
-    
+
     CATEGORY_REASONS = {
         TaskCategory.CODE: "Complex reasoning and code generation task — routed to GPT-5.2",
         TaskCategory.ANALYSIS: "Analysis and structured thinking task — routed to Claude",
         TaskCategory.STRATEGY: "Strategy and planning task — routed to Claude",
-        TaskCategory.QUICK: "Fast, simple task — routed to Gemini Flash",
+        TaskCategory.QUICK: "Fast, simple task — routed to the approved low-latency model",
         TaskCategory.GENERAL: "General task — routed to GPT-5.2 as default"
     }
-    
+
     @classmethod
     def _compile_patterns(cls):
         return {
             category: [re.compile(p, re.IGNORECASE) for p in patterns]
             for category, patterns in cls.PATTERNS.items()
         }
-    
+
     @classmethod
     def _classify_task(cls, prompt: str) -> TaskCategory:
         compiled = cls._compile_patterns()
         scores = {category: 0 for category in TaskCategory}
-        
+
         for category, patterns in compiled.items():
             for pattern in patterns:
                 if pattern.search(prompt):
                     scores[category] += 1
-        
+
         max_category = max(scores, key=scores.get)
-        
+
         if scores[max_category] == 0:
             return TaskCategory.GENERAL
-        
+
         return max_category
-    
+
     @classmethod
     def route(cls, goal: str, force_model: str = None) -> RoutingDecision:
         if force_model:
+            approved_model = enforce_approved_model(force_model)
             return RoutingDecision(
-                model=force_model,
-                reason=f"Model override specified — using {force_model}"
+                model=approved_model,
+                reason=f"Approved model override specified — using {approved_model}"
             )
-        
+
         category = cls._classify_task(goal)
-        model = cls.CATEGORY_MODEL_MAP[category]
+        model = enforce_approved_model(cls.CATEGORY_MODEL_MAP[category])
         reason = cls.CATEGORY_REASONS[category]
-        
+
         return RoutingDecision(model=model, reason=reason)
