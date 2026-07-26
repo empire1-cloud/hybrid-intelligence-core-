@@ -18,7 +18,7 @@ class StrategyEngine:
     """Generates actionable strategies using the approved HIC model stack."""
 
     MODEL_CONFIG = {
-        "gpt-5.2": ("openai", "gpt-4o"),
+        "gpt-5.2": ("openai", "gpt-5.2"),
         "gpt-4o": ("openai", "gpt-4o"),
         "gpt-4o-mini": ("openai", "gpt-4o-mini"),
         "claude-sonnet-4.5": ("anthropic", "claude-sonnet-4-5-20250929"),
