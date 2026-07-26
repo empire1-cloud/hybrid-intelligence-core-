@@ -87,9 +87,9 @@ api_router.include_router(system_router)
 api_router.include_router(history_protected_router)
 api_router.include_router(pipelines_router)
 
-# Hosted HIC engine surfaces require a JWT workspace or a valid hic_ API key.
-# The dependency also enforces monthly execution limits. The public health and
-# core-status routes are explicitly bypassed inside enforce_engine_subscription.
+# Executable HIC engine surfaces require a JWT workspace or valid hic_ API key.
+# The dependency also enforces the team's monthly execution allowance. Public
+# health/core status are bypassed inside enforce_engine_subscription.
 engine_dependencies = [Depends(enforce_engine_subscription)]
 api_router.include_router(core_router, dependencies=engine_dependencies)
 api_router.include_router(strategy_router, dependencies=engine_dependencies)
@@ -107,7 +107,10 @@ api_router.include_router(anime_lore_router, dependencies=engine_dependencies)
 api_router.include_router(anime_story_router, dependencies=engine_dependencies)
 api_router.include_router(art_direction_router, dependencies=engine_dependencies)
 api_router.include_router(money_pipeline_router, dependencies=engine_dependencies)
-api_router.include_router(analytics_router, dependencies=engine_dependencies)
+
+# Existing analytics transport remains read-only/public in this release so its
+# polling and WebSocket dashboard are not broken by the new execution gate.
+api_router.include_router(analytics_router)
 
 # SLA113 remains a separately commercialized sovereign product surface.
 api_router.include_router(sla113_router)
