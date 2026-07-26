@@ -1,8 +1,8 @@
 """
 Strategy Engine
-Generates actionable strategies using the hybrid AI stack.
+Generates actionable strategies using the Empire-1 approved AI stack.
 
-Supports: OpenAI, Anthropic, Google models via local emergentintegrations package.
+Supports approved OpenAI and Anthropic models via the local integration layer.
 """
 
 import os
@@ -10,23 +10,21 @@ import json
 import asyncio
 from typing import Optional, Dict, Any
 
-# Use local emergentintegrations package (self-contained, no external dependencies)
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from services.model_policy import enforce_approved_model
 
 
 class StrategyEngine:
-    """Generates actionable strategies using the hybrid AI stack."""
-    
+    """Generates actionable strategies using the approved HIC model stack."""
+
     MODEL_CONFIG = {
         "gpt-5.2": ("openai", "gpt-4o"),
         "gpt-4o": ("openai", "gpt-4o"),
         "gpt-4o-mini": ("openai", "gpt-4o-mini"),
         "claude-sonnet-4.5": ("anthropic", "claude-sonnet-4-5-20250929"),
         "claude-3-5-sonnet": ("anthropic", "claude-3-5-sonnet-20241022"),
-        "gemini-3-flash": ("google", "gemini-2.0-flash"),
-        "gemini-2.0-flash": ("google", "gemini-2.0-flash"),
     }
-    
+
     SYSTEM_PROMPT = """You are the Strategy Engine.
 
 Your job is to take any goal the user gives you and return a clear, structured, actionable strategy that creates momentum, removes confusion, and breaks the goal into steps anyone can follow.
@@ -53,52 +51,50 @@ OUTPUT FORMAT (JSON ONLY):
 Return ONLY the JSON object. No other text."""
 
     @classmethod
-    def _get_api_key(cls) -> str:
-        """Get API key from environment."""
-        return os.environ.get("EMERGENT_LLM_KEY") or \
-               os.environ.get("OPENAI_API_KEY") or \
-               os.environ.get("ANTHROPIC_API_KEY") or \
-               os.environ.get("GOOGLE_API_KEY")
-    
+    def _get_api_key(cls, provider: str) -> str:
+        """Get a provider-specific API key without Google fallbacks."""
+        if provider == "anthropic":
+            return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+        return os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+
     @classmethod
     def _create_chat(cls, model: str) -> LlmChat:
-        """Create configured chat instance."""
-        api_key = cls._get_api_key()
-        provider, model_name = cls.MODEL_CONFIG.get(model, ("openai", "gpt-4o"))
-        
+        """Create a configured chat instance after enforcing model policy."""
+        approved_model = enforce_approved_model(model)
+        provider, model_name = cls.MODEL_CONFIG[approved_model]
+        api_key = cls._get_api_key(provider)
+
         chat = LlmChat(
             api_key=api_key,
-            session_id=f"strategy-{model}",
+            session_id=f"strategy-{approved_model}",
             system_message=cls.SYSTEM_PROMPT
         ).with_model(provider, model_name)
-        
+
         return chat
-    
+
     @classmethod
     async def _generate_async(
-        cls, 
-        model: str, 
-        goal: str, 
-        context: str = None, 
+        cls,
+        model: str,
+        goal: str,
+        context: str = None,
         tone: str = "direct"
     ) -> Dict[str, Any]:
         """Generate strategy asynchronously."""
         chat = cls._create_chat(model)
-        
+
         prompt = f"Goal: {goal}"
         if context:
             prompt += f"\nContext: {context}"
         if tone:
             prompt += f"\nTone: {tone}"
-        
+
         message = UserMessage(text=prompt)
         response = await chat.send_message(message)
-        
-        # Parse JSON from response
+
         try:
             response_text = response
-            
-            # Extract JSON if wrapped in markdown
+
             if "```json" in response_text:
                 start = response_text.find("```json") + 7
                 end = response_text.find("```", start)
@@ -107,10 +103,9 @@ Return ONLY the JSON object. No other text."""
                 start = response_text.find("```") + 3
                 end = response_text.find("```", start)
                 response_text = response_text[start:end].strip()
-            
+
             return json.loads(response_text)
         except json.JSONDecodeError:
-            # Return structured error if JSON parsing fails
             return {
                 "summary": response[:500] if isinstance(response, str) else str(response)[:500],
                 "steps": ["Review the generated content and extract actionable steps"],
@@ -118,24 +113,24 @@ Return ONLY the JSON object. No other text."""
                 "resources": [],
                 "next_action": "Retry with a more specific goal"
             }
-    
+
     @classmethod
     def generate(
-        cls, 
-        model: str, 
-        goal: str, 
-        context: str = None, 
+        cls,
+        model: str,
+        goal: str,
+        context: str = None,
         tone: str = "direct"
     ) -> Dict[str, Any]:
         """Synchronous wrapper for async generation."""
         return asyncio.run(cls._generate_async(model, goal, context, tone))
-    
+
     @classmethod
     async def generate_async(
-        cls, 
-        model: str, 
-        goal: str, 
-        context: str = None, 
+        cls,
+        model: str,
+        goal: str,
+        context: str = None,
         tone: str = "direct"
     ) -> Dict[str, Any]:
         """Async generation method."""
