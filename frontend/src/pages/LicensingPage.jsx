@@ -1,634 +1,190 @@
-/**
- * Licensing Page — Empire-1 HIC & SLA113 Rate Sheet
- * Cockpit Spec styling
- */
+import { Link } from 'react-router-dom';
 
-import { Link } from "react-router-dom";
+const FOUNDER_EMAIL = 'founder@empire1.cloud';
+
+const APP_PLANS = [
+  {
+    tag: 'Explore',
+    name: 'Free',
+    price: '$0',
+    cadence: '/month',
+    description: 'A real HIC workspace for learning the system and running a small monthly workload.',
+    items: ['100 executions / month', '3 team members', '2 API keys', '5 pipelines', 'Basic engines'],
+    action: 'Open your workspace',
+    href: '/',
+  },
+  {
+    tag: 'Hosted HIC App',
+    name: 'HIC Pro',
+    price: '$299',
+    cadence: '/month',
+    description: 'The complete hosted application for builders who want engines, pipelines, history, analytics, API keys, and a team workspace.',
+    items: ['5,000 executions / month', '10 team members', '10 API keys', '50 pipelines', 'All approved HIC engines', 'Advanced analytics'],
+    action: 'Open billing',
+    href: '/billing',
+    featured: true,
+  },
+  {
+    tag: 'Hosted HIC App',
+    name: 'HIC Enterprise App',
+    price: 'From $1,500',
+    cadence: '/month',
+    description: 'A larger hosted workspace with negotiated capacity, governance, priority support, and custom integrations.',
+    items: ['Larger included allowance', 'Advanced governance', 'Priority capacity', 'Dedicated support', 'Custom integrations'],
+    action: 'Contact the founder',
+    href: `mailto:${FOUNDER_EMAIL}?subject=HIC%20Enterprise%20App`,
+    external: true,
+  },
+];
+
+const COMMERCIAL_PATHS = [
+  {
+    tag: 'One-Time Service',
+    name: 'Revenue Sprint',
+    price: '$999',
+    cadence: 'one time',
+    description: 'Done-with-you. The Revenue OS output runs first, then we refine it together until the offer and close path are sharp.',
+    items: ['Everything in the Revenue Receipt', 'One custom refinement pass', 'One direct founder session', 'Final close-ready delivery'],
+    note: 'No recurring charge. Additional implementation is separate.',
+    action: 'Book a Sprint',
+    subject: 'Empire-1 Revenue Sprint',
+  },
+  {
+    tag: 'Managed Service',
+    name: 'Empire Partnership',
+    price: 'From $5,000',
+    cadence: '/month',
+    description: 'Done-for-you and ongoing. Empire-1 builds, integrates, and operates the customer universe on HIC.',
+    items: ['Everything in the Sprint', 'Custom universe build and integration', 'Managed pipelines and operation', 'Direct founder access while active'],
+    note: 'Monthly after onboarding. Cancel before the next renewal. Onboarding and custom build work are priced separately.',
+    action: 'Discuss a Partnership',
+    subject: 'Empire-1 Partnership',
+  },
+  {
+    tag: 'White-Label License',
+    name: 'License HIC',
+    price: 'From $2,500',
+    cadence: '/month',
+    description: 'Embed the intelligence layer underneath an existing product. The licensee keeps its own product, customers, name, and customer-facing experience.',
+    items: ['Routing Engine', 'Canon Enforcer', 'Format Normalizer', 'Drift Monitor', 'Deployment-scoped engine and pipeline access', 'Zero Empire-1 customer-facing branding'],
+    note: 'Month-to-month after activation. One-time implementation starts around $5,000 and depends on deployment scope.',
+    action: 'License the Engine',
+    subject: 'HIC Engine License',
+    featured: true,
+  },
+  {
+    tag: 'Factory License',
+    name: 'License SLA113',
+    price: 'From $7,500',
+    cadence: '/month',
+    description: 'Run the full operator platform: console, HIC, specialized engine set, orchestration, dashboards, and branded instance minting.',
+    items: ['Everything in the HIC license', 'Full operator console', 'Specialized engine set', 'Pipeline orchestration', 'Revenue and analytics dashboards', 'Self-service branded instance minting'],
+    note: 'Month-to-month after implementation. One-time implementation starts around $15,000 and depends on infrastructure and instance scope.',
+    action: 'License the Factory',
+    subject: 'SLA113 Factory License',
+  },
+];
+
+const PricingCard = ({ plan, commercial = false }) => {
+  const actionHref = commercial
+    ? `mailto:${FOUNDER_EMAIL}?subject=${encodeURIComponent(plan.subject)}`
+    : plan.href;
+
+  const action = plan.external || commercial ? (
+    <a className="license-action" href={actionHref}>{plan.action} →</a>
+  ) : (
+    <Link className="license-action" to={actionHref}>{plan.action} →</Link>
+  );
+
+  return (
+    <article className={`license-card${plan.featured ? ' featured' : ''}`}>
+      {plan.featured && <div className="recommended-label">RECOMMENDED START</div>}
+      <div className="license-tag">{plan.tag}</div>
+      <h3>{plan.name}</h3>
+      <div className="license-price">
+        <strong>{plan.price}</strong>
+        <span>{plan.cadence}</span>
+      </div>
+      <p className="license-description">{plan.description}</p>
+      <ul>
+        {plan.items.map((item) => <li key={item}>— {item}</li>)}
+      </ul>
+      {plan.note && <p className="license-note">{plan.note}</p>}
+      <div className="license-card-footer">{action}</div>
+    </article>
+  );
+};
 
 const LicensingPage = () => {
   return (
-    <div className="page-container" style={{ maxWidth: 960 }}>
-      <div
-        className="page-header"
-        style={{
-          borderBottom: "1px solid var(--border-color)",
-          paddingBottom: "1.5rem",
-          marginBottom: "2.5rem",
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: "11px",
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
-            color: "var(--gold)",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            marginBottom: "18px",
-          }}
-        >
-          <span
-            style={{
-              width: "14px",
-              height: "1px",
-              background: "var(--gold)",
-              display: "inline-block",
-            }}
-          ></span>
-          LICENSING
-        </div>
-        <h1
-          style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            fontWeight: 700,
-            fontSize: "clamp(30px, 4.2vw, 46px)",
-            lineHeight: 1.05,
-            margin: 0,
-            textTransform: "uppercase",
-          }}
-        >
-          HIC & SLA113 Rate Sheet
-        </h1>
-        <p
-          style={{
-            color: "var(--ink-3)",
-            fontSize: "15px",
-            lineHeight: 1.7,
-            maxWidth: 600,
-            marginTop: "12px",
-          }}
-        >
-          Two ways to license the Empire-1 stack. The intelligence core alone,
-          or the full factory.
-        </p>
-      </div>
+    <div className="page-container licensing-page">
+      <header className="licensing-hero">
+        <div className="licensing-eyebrow">EMPIRE-1 COMMERCIAL PATHS</div>
+        <h1>Use the app. License the engine. License the factory.</h1>
+        <p>Each path is priced for what the customer is actually receiving. Hosted HIC is a software subscription. Licensing places Empire-1 infrastructure underneath another company. Partnership means we operate it with them.</p>
+        <div className="no-lockin-line"><span /> Monthly services are cancel-anytime with no long-term lock-in.</div>
+      </header>
 
-      {/* OPTION ONE — HIC */}
-      <section style={{ marginBottom: "4rem" }}>
-        <div
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: "11px",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "var(--blue)",
-            marginBottom: "18px",
-          }}
-        >
-          OPTION ONE
-        </div>
-
-        <h2
-          style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            fontWeight: 700,
-            fontSize: "32px",
-            lineHeight: 1.1,
-            margin: "0 0 12px",
-            textTransform: "uppercase",
-          }}
-        >
-          Empire-1 HIC
-        </h2>
-        <p
-          style={{
-            color: "var(--ink-3)",
-            fontSize: "15px",
-            lineHeight: 1.7,
-            maxWidth: 620,
-            marginBottom: "8px",
-          }}
-        >
-          License the intelligence core. Keep your own app.
-        </p>
-        <p
-          style={{
-            color: "var(--ink-4)",
-            fontSize: "14px",
-            lineHeight: 1.7,
-            maxWidth: 620,
-            marginBottom: "32px",
-          }}
-        >
-          Empire-1 HIC is the standalone intelligence core — routing, canon
-          enforcement, a specialized engine set, drift monitoring, and operator
-          intelligence. Drop it into your existing product; nothing of ours
-          becomes customer-facing.
-        </p>
-        <p
-          style={{
-            color: "var(--ink-4)",
-            fontSize: "13px",
-            fontFamily: "'JetBrains Mono', monospace",
-            marginBottom: "28px",
-          }}
-        >
-          Best for: teams with an existing product who want the intelligence
-          layer without building it themselves.
-        </p>
-
-        {/* HIC Tiers */}
-        <div
-          style={{
-            border: "1px solid var(--border-color)",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "140px 1fr 180px",
-              gap: "24px",
-              padding: "14px 20px",
-              borderBottom: "1px solid var(--border-color)",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "10.5px",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--ink-4)",
-            }}
-          >
-            <span>Tier</span>
-            <span>Who It's For</span>
-            <span style={{ textAlign: "right" }}>Rate</span>
+      <section className="licensing-section">
+        <div className="section-heading">
+          <div>
+            <div className="licensing-eyebrow">USE HIC</div>
+            <h2>Hosted application subscriptions</h2>
           </div>
-
-          {[
-            {
-              tier: "Founding Partner",
-              who: "First licensees, pre-case-study — early access in exchange for production data and a reference.",
-              rate: "$0–$500/mo",
-              setup: "or $500–$1,500 setup",
-              color: "var(--blue)",
-            },
-            {
-              tier: "Standard",
-              who: "Small–mid company, defined monthly request volume.",
-              rate: "$1,500–$5,000/mo",
-              setup: "or $15K–$50K/yr",
-              color: "var(--gold)",
-            },
-            {
-              tier: "Enterprise",
-              who: "Larger company, custom routing rules, dedicated support.",
-              rate: "$5K–$20K+/mo",
-              setup: "or $50K–$250K+/yr",
-              color: "var(--gold)",
-            },
-          ].map((row, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "140px 1fr 180px",
-                gap: "24px",
-                padding: "18px 20px",
-                borderBottom:
-                  i < 2 ? "1px solid rgba(245,245,247,0.06)" : "none",
-                alignItems: "start",
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: "11.5px",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: row.color,
-                  paddingTop: "2px",
-                }}
-              >
-                {row.tier}
-              </span>
-              <span
-                style={{
-                  fontSize: "14px",
-                  color: "var(--ink-3)",
-                  lineHeight: 1.6,
-                }}
-              >
-                {row.who}
-              </span>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{
-                    fontFamily: "'Barlow Condensed', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "22px",
-                  }}
-                >
-                  {row.rate}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: "10.5px",
-                    color: "var(--ink-4)",
-                    marginTop: "4px",
-                  }}
-                >
-                  {row.setup}
-                </div>
-              </div>
-            </div>
-          ))}
+          <p>Customers log into the HIC app and use the engines, Pipeline Composer, history, analytics, team workspace, and API keys. They are not licensing the underlying platform.</p>
         </div>
-
-        {/* Usage-Based */}
-        <div
-          style={{
-            border: "1px solid var(--border-color)",
-            padding: "18px 22px",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "11px",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--ink-4)",
-              marginBottom: "8px",
-            }}
-          >
-            Usage-Based Alternative
-          </div>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "var(--ink-3)",
-              lineHeight: 1.6,
-              margin: 0,
-            }}
-          >
-            Instead of — or alongside — a flat fee: a per-request charge, or a
-            15–30% markup over raw model API cost. Best suited to licensees who
-            already trust HIC enough to run real production volume through it —
-            typically a Standard or Enterprise conversation, not a first deal.
-          </p>
+        <div className="app-plan-grid">
+          {APP_PLANS.map((plan) => <PricingCard key={plan.name} plan={plan} />)}
         </div>
-
-        <div
-          style={{
-            borderLeft: "2px solid var(--pink)",
-            paddingLeft: "20px",
-            marginBottom: "24px",
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "11px",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--pink)",
-              margin: "0 0 8px",
-            }}
-          >
-            The Law Applies Here Too
-          </p>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "var(--ink-3)",
-              lineHeight: 1.6,
-              margin: 0,
-            }}
-          >
-            Every license exists to prove HIC generates revenue on its own
-            terms. Pricing above is a starting point for negotiation, not a
-            fixed rate card.
-          </p>
+        <div className="terms-strip">
+          <strong>Monthly billing. Cancel anytime.</strong>
+          <span>Paid access remains active through the current billing period. Additional usage is agreed before it is charged—no surprise automatic overages.</span>
         </div>
-
-        <p
-          style={{
-            fontSize: "12px",
-            color: "var(--ink-4)",
-            lineHeight: 1.6,
-            fontStyle: "italic",
-          }}
-        >
-          Figures are directional estimates based on comparable
-          AI-infrastructure licensing patterns, not guarantees or financial
-          projections. Empire-1 is not a licensed financial or legal advisor —
-          confirm terms with your own counsel before executing any agreement.
-        </p>
       </section>
 
-      {/* Divider */}
-      <div
-        style={{ borderTop: "1px solid var(--border-color)", margin: "4rem 0" }}
-      ></div>
-
-      {/* OPTION TWO — SLA113 */}
-      <section>
-        <div
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: "11px",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "var(--pink)",
-            marginBottom: "18px",
-          }}
-        >
-          OPTION TWO
-        </div>
-
-        <h2
-          style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            fontWeight: 700,
-            fontSize: "32px",
-            lineHeight: 1.1,
-            margin: "0 0 12px",
-            textTransform: "uppercase",
-          }}
-        >
-          SLA113
-        </h2>
-        <p
-          style={{
-            color: "var(--ink-3)",
-            fontSize: "15px",
-            lineHeight: 1.7,
-            maxWidth: 620,
-            marginBottom: "8px",
-          }}
-        >
-          License the factory. Mint your own branded platform.
-        </p>
-        <p
-          style={{
-            color: "var(--ink-4)",
-            fontSize: "14px",
-            lineHeight: 1.7,
-            maxWidth: 620,
-            marginBottom: "12px",
-          }}
-        >
-          SLA113 is the hybrid factory and control plane, built on Empire-1 HIC
-          — the system that produces full white-label operating systems,
-          platforms, and branded business instances. This isn't hypothetical:
-          Southern Lyfestyle, including Southern Arcade OS, is an independent
-          experience business running on exactly this factory today.
-        </p>
-        <p
-          style={{
-            color: "var(--ink-4)",
-            fontSize: "13px",
-            fontFamily: "'JetBrains Mono', monospace",
-            marginBottom: "16px",
-          }}
-        >
-          Best for: operators launching a new branded platform who want the full
-          factory, not just the engine.
-        </p>
-
-        <div
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: "11px",
-            color: "var(--ink-4)",
-            lineHeight: 1.8,
-            marginBottom: "28px",
-          }}
-        >
-          Included in every SLA113 license — Operator Console · 18+ Specialized
-          Engines · Empire-1 HIC · Self-Service Instance Minting
-        </div>
-
-        {/* SLA113 Tiers */}
-        <div
-          style={{
-            border: "1px solid var(--border-color)",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "140px 1fr 180px",
-              gap: "24px",
-              padding: "14px 20px",
-              borderBottom: "1px solid var(--border-color)",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "10.5px",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--ink-4)",
-            }}
-          >
-            <span>Tier</span>
-            <span>Who It's For</span>
-            <span style={{ textAlign: "right" }}>Rate</span>
+      <section className="licensing-section commercial-section">
+        <div className="section-heading">
+          <div>
+            <div className="licensing-eyebrow">BUILD, OPERATE, OR LICENSE</div>
+            <h2>Higher-touch Empire-1 paths</h2>
           </div>
-
-          {[
-            {
-              tier: "Platform Founding Partner",
-              who: "First full-platform licensee — discounted for a real production case study and reference.",
-              rate: "$1,000–$2,500/mo",
-              setup: "or $2K–$5K setup",
-              color: "var(--blue)",
-            },
-            {
-              tier: "Platform Standard",
-              who: "Operator running one branded instance, standard engine set.",
-              rate: "$5,000–$15,000/mo",
-              setup: "or $50K–$150K/yr",
-              color: "var(--pink)",
-            },
-            {
-              tier: "Platform Enterprise",
-              who: "Multi-instance operator, custom engine set, dedicated infrastructure.",
-              rate: "$20K+/mo",
-              setup: "or $200K+/yr",
-              color: "var(--pink)",
-            },
-          ].map((row, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "140px 1fr 180px",
-                gap: "24px",
-                padding: "18px 20px",
-                borderBottom:
-                  i < 2 ? "1px solid rgba(245,245,247,0.06)" : "none",
-                alignItems: "start",
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: "11.5px",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: row.color,
-                  paddingTop: "2px",
-                }}
-              >
-                {row.tier}
-              </span>
-              <span
-                style={{
-                  fontSize: "14px",
-                  color: "var(--ink-3)",
-                  lineHeight: 1.6,
-                }}
-              >
-                {row.who}
-              </span>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{
-                    fontFamily: "'Barlow Condensed', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "22px",
-                  }}
-                >
-                  {row.rate}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: "10.5px",
-                    color: "var(--ink-4)",
-                    marginTop: "4px",
-                  }}
-                >
-                  {row.setup}
-                </div>
-              </div>
-            </div>
-          ))}
+          <p>These are not ordinary HIC accounts. They include founder time, integration, managed operation, white-label infrastructure, or the complete factory platform.</p>
         </div>
-
-        {/* Why SLA113 Costs More */}
-        <div
-          style={{
-            border: "1px solid var(--border-strong)",
-            padding: "22px 24px",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "11px",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--ink-4)",
-              marginBottom: "12px",
-            }}
-          >
-            Why SLA113 Costs More Than HIC Alone
-          </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-            {[
-              "Full operator console — not just an API endpoint to integrate",
-              "18+ specialized engines already built, not just routing logic",
-              "Self-service white-label minting — spin up new branded instances without touching our team",
-              "This is the platform an entire business runs on, not a component inside one",
-            ].map((item, i) => (
-              <li
-                key={i}
-                style={{
-                  fontSize: "14px",
-                  color: "var(--ink-3)",
-                  lineHeight: 1.6,
-                  padding: "6px 0",
-                  paddingLeft: "16px",
-                  position: "relative",
-                }}
-              >
-                <span
-                  style={{ position: "absolute", left: 0, color: "var(--ok)" }}
-                >
-                  —
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
+        <div className="commercial-grid">
+          {COMMERCIAL_PATHS.map((plan) => <PricingCard key={plan.name} plan={plan} commercial />)}
         </div>
-
-        <div
-          style={{
-            borderLeft: "2px solid var(--pink)",
-            paddingLeft: "20px",
-            marginBottom: "24px",
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "11px",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--pink)",
-              margin: "0 0 8px",
-            }}
-          >
-            The Law Applies Here Too
-          </p>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "var(--ink-3)",
-              lineHeight: 1.6,
-              margin: 0,
-            }}
-          >
-            Every license exists to prove the platform generates revenue on its
-            own terms. Pricing above is a starting point for negotiation, not a
-            fixed rate card.
-          </p>
-        </div>
-
-        <p
-          style={{
-            fontSize: "12px",
-            color: "var(--ink-4)",
-            lineHeight: 1.6,
-            fontStyle: "italic",
-          }}
-        >
-          Figures are directional estimates based on comparable
-          AI-infrastructure licensing patterns, not guarantees or financial
-          projections. Empire-1 is not a licensed financial or legal advisor —
-          confirm terms with your own counsel before executing any agreement.
-        </p>
       </section>
 
-      {/* Footer */}
-      <div
-        style={{
-          marginTop: "4rem",
-          borderTop: "1px solid var(--border-color)",
-          paddingTop: "20px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: "10.5px",
-          color: "var(--ink-4)",
-          letterSpacing: "0.08em",
-        }}
-      >
-        <span>EMPIRE-1 · HIC & SLA113 LICENSING · 2026</span>
-        <a
-          href="mailto:founder@empire1.cloud"
-          style={{ color: "var(--ink-4)", textDecoration: "none" }}
-        >
-          founder@empire1.cloud
-        </a>
-      </div>
+      <section className="difference-panel">
+        <div>
+          <div className="difference-label">USE HIC</div>
+          <h3>Your team works inside our hosted application.</h3>
+          <p>Fastest start, self-service workspace, monthly subscription, included usage limits.</p>
+        </div>
+        <div>
+          <div className="difference-label">LICENSE HIC</div>
+          <h3>Our intelligence runs underneath your product.</h3>
+          <p>Your brand stays customer-facing. Integration and deployment scope are separate from the monthly license.</p>
+        </div>
+        <div>
+          <div className="difference-label">LICENSE SLA113</div>
+          <h3>You operate the complete branded factory.</h3>
+          <p>Full console, engines, orchestration, dashboards, and instance minting—not merely API access.</p>
+        </div>
+      </section>
+
+      <section className="license-final-cta">
+        <div>
+          <div className="licensing-eyebrow">NO TRAP. CLEAR SCOPE.</div>
+          <h2>Stay because the system earns its place.</h2>
+          <p>Monthly services can be canceled before the next renewal. One-time onboarding, implementation, custom development, infrastructure, and model usage are scoped separately and confirmed before work begins.</p>
+        </div>
+        <a className="license-action primary" href={`mailto:${FOUNDER_EMAIL}?subject=Empire-1%20Commercial%20Path`}>Talk to the founder →</a>
+      </section>
+
+      <style>{`
+        .licensing-page{max-width:1180px}.licensing-hero{padding:34px 0 58px;border-bottom:1px solid var(--border-color)}.licensing-eyebrow{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--gold);margin-bottom:14px}.licensing-hero h1{font-family:'Barlow Condensed',sans-serif;font-size:clamp(42px,7vw,72px);line-height:.95;text-transform:uppercase;max-width:900px;margin:0 0 22px}.licensing-hero>p{max-width:760px;color:var(--ink-3);font-size:15px;line-height:1.75}.no-lockin-line{display:inline-flex;align-items:center;gap:9px;margin-top:18px;padding:10px 13px;border:1px solid rgba(0,212,170,.25);background:rgba(0,212,170,.05);font-family:'JetBrains Mono',monospace;font-size:10.5px;text-transform:uppercase;color:var(--accent-green)}.no-lockin-line span{width:7px;height:7px;border-radius:50%;background:var(--accent-green);box-shadow:0 0 9px rgba(0,212,170,.8)}.licensing-section{padding:58px 0;border-bottom:1px solid var(--border-color)}.section-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:30px;margin-bottom:28px}.section-heading h2,.license-final-cta h2{font-family:'Barlow Condensed',sans-serif;font-size:38px;line-height:1;text-transform:uppercase;margin:0}.section-heading>p{max-width:530px;color:var(--ink-3);font-size:13.5px;line-height:1.65}.app-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.commercial-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.license-card{position:relative;border:1px solid var(--border-color);background:rgba(255,255,255,.018);padding:26px;display:flex;flex-direction:column;min-height:100%}.license-card.featured{border-color:rgba(232,185,35,.58);background:linear-gradient(180deg,rgba(232,185,35,.055),rgba(255,255,255,.012))}.recommended-label{position:absolute;right:0;top:0;padding:7px 9px;background:var(--gold);color:#050505;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.09em}.license-tag{font-family:'JetBrains Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-4);margin-bottom:13px}.license-card h3{font-family:'Barlow Condensed',sans-serif;font-size:28px;text-transform:uppercase;margin:0}.license-price{display:flex;align-items:baseline;gap:7px;margin:12px 0 15px}.license-price strong{font-family:'Barlow Condensed',sans-serif;font-size:34px}.license-price span{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);text-transform:uppercase}.license-description{font-size:13.5px;color:var(--ink-3);line-height:1.65}.license-card ul{list-style:none;padding:0;margin:4px 0 20px;color:var(--ink-3);font-size:12.5px;line-height:1.75}.license-note{font-size:11.5px;color:var(--ink-4);line-height:1.6;margin-top:auto}.license-card-footer{margin-top:20px}.license-action{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-strong);padding:12px 15px;color:var(--text);text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.07em;transition:.2s}.license-action:hover{border-color:var(--gold);color:var(--gold)}.license-action.primary{background:var(--gold);color:#050505;border-color:var(--gold);font-weight:700}.terms-strip{display:grid;grid-template-columns:250px 1fr;gap:24px;margin-top:16px;padding:18px 20px;border-left:2px solid var(--accent-green);background:rgba(0,212,170,.035)}.terms-strip strong{font-size:13px}.terms-strip span{font-size:12.5px;color:var(--ink-3);line-height:1.6}.difference-panel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--border-color);border:1px solid var(--border-color);margin:58px 0}.difference-panel>div{background:var(--surface,#0d0d12);padding:28px}.difference-label{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--gold);letter-spacing:.1em;margin-bottom:14px}.difference-panel h3{font-family:'Barlow Condensed',sans-serif;font-size:24px;text-transform:uppercase;margin:0 0 12px}.difference-panel p{color:var(--ink-3);font-size:12.5px;line-height:1.65}.license-final-cta{display:flex;justify-content:space-between;align-items:center;gap:30px;padding:0 0 60px}.license-final-cta p{max-width:760px;color:var(--ink-3);font-size:13.5px;line-height:1.7}@media(max-width:900px){.app-plan-grid{grid-template-columns:1fr}.commercial-grid{grid-template-columns:1fr}.section-heading,.license-final-cta{flex-direction:column;align-items:flex-start}.difference-panel{grid-template-columns:1fr}.terms-strip{grid-template-columns:1fr}}@media(max-width:520px){.licensing-hero h1{font-size:45px}.license-card{padding:22px}.no-lockin-line{align-items:flex-start}}
+      `}</style>
     </div>
   );
 };
