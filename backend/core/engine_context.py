@@ -3,7 +3,7 @@ Engine execution context with JWT or HIC API-key authentication.
 
 This module is the subscription gate for hosted HIC engine calls. Public health
 checks remain public; executable engine routes require a valid team context and
-consume the team's monthly execution allowance.
+must fit inside the team's monthly execution allowance.
 """
 
 import time
@@ -17,7 +17,7 @@ from core.dependencies import security, get_current_user, get_current_team
 from database import teams_collection
 from services.api_key_service import get_api_key_context
 from services.execution_logger_db import log_execution
-from services.usage_service import check_usage_limit, increment_usage
+from services.usage_service import check_usage_limit
 
 
 PUBLIC_ENGINE_PATHS = {
@@ -140,7 +140,7 @@ async def enforce_engine_subscription(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> Optional[EngineContext]:
-    """Authenticate executable engine routes and consume monthly usage."""
+    """Authenticate engine routes and reserve a valid monthly execution slot."""
     if request.method == "GET" and request.url.path in PUBLIC_ENGINE_PATHS:
         return None
 
@@ -151,11 +151,7 @@ async def enforce_engine_subscription(
     if is_execution:
         context.require_write()
         await check_usage_limit(context.team_id, "executions", 1)
-        await increment_usage(
-            team_id=context.team_id,
-            executions=1,
-            api_calls=1 if context.actor_type == "api_key" else 0,
-        )
+        request.state.hic_execution_pending = True
 
     request.state.engine_context = context
     return context
