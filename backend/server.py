@@ -88,8 +88,8 @@ api_router.include_router(history_protected_router)
 api_router.include_router(pipelines_router)
 
 # Executable HIC engine surfaces require a JWT workspace or valid hic_ API key.
-# The dependency also enforces the team's monthly execution allowance. Public
-# health/core status are bypassed inside enforce_engine_subscription.
+# The dependency checks the monthly allowance before execution; successful usage
+# is committed by SubscriptionUsageMiddleware after the route returns.
 engine_dependencies = [Depends(enforce_engine_subscription)]
 api_router.include_router(core_router, dependencies=engine_dependencies)
 api_router.include_router(strategy_router, dependencies=engine_dependencies)
@@ -182,10 +182,12 @@ app.add_middleware(
 )
 
 from middleware.model_policy_middleware import ModelPolicyMiddleware
+from middleware.subscription_usage_middleware import SubscriptionUsageMiddleware
 from middleware.logging_middleware import ExecutionLoggingMiddleware
 
 app.add_middleware(ModelPolicyMiddleware)
 app.add_middleware(ExecutionLoggingMiddleware)
+app.add_middleware(SubscriptionUsageMiddleware)
 
 logging.basicConfig(
     level=logging.INFO,
