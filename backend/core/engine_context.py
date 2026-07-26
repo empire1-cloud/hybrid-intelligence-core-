@@ -11,14 +11,16 @@ from typing import Optional
 
 from bson import ObjectId
 from fastapi import Request, HTTPException, Depends, status
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.dependencies import security, get_current_user, get_current_team
+from core.dependencies import get_current_user, get_current_team
 from database import teams_collection
 from services.api_key_service import get_api_key_context
 from services.execution_logger_db import log_execution
 from services.usage_service import check_usage_limit
 
+
+engine_security = HTTPBearer(auto_error=False)
 
 PUBLIC_ENGINE_PATHS = {
     "/api/health",
@@ -37,6 +39,7 @@ class EngineContext:
         actor_type: str = "user",
         api_key_id: Optional[str] = None,
         api_key_name: Optional[str] = None,
+        permissions: Optional[list[str]] = None,
     ):
         self.user = user
         self.team = team
@@ -47,30 +50,37 @@ class EngineContext:
         self.actor_type = actor_type
         self.api_key_id = api_key_id
         self.api_key_name = api_key_name
+        self.permissions = set(permissions or [])
 
     @property
     def can_write(self) -> bool:
+        if self.actor_type == "api_key":
+            return "execute" in self.permissions
         return self.user_role in ["owner", "admin", "member"]
 
     @property
     def can_admin(self) -> bool:
+        if self.actor_type == "api_key":
+            return False
         return self.user_role in ["owner", "admin"]
 
     @property
     def can_read(self) -> bool:
+        if self.actor_type == "api_key":
+            return bool({"read", "execute"} & self.permissions)
         return self.user_role in ["owner", "admin", "member", "viewer"]
 
     def require_read(self):
         if not self.can_read:
-            raise HTTPException(status_code=403, detail="You don't have access to view this resource")
+            raise HTTPException(status_code=403, detail="This actor does not have read access")
 
     def require_write(self):
         if not self.can_write:
-            raise HTTPException(status_code=403, detail="You need member, admin, or owner role to perform this action")
+            raise HTTPException(status_code=403, detail="This actor does not have engine execution access")
 
     def require_admin(self):
         if not self.can_admin:
-            raise HTTPException(status_code=403, detail="You need admin or owner role to perform this action")
+            raise HTTPException(status_code=403, detail="A user with admin or owner role is required")
 
 
 async def _context_from_api_key(request: Request, token: str) -> Optional[EngineContext]:
@@ -90,7 +100,9 @@ async def _context_from_api_key(request: Request, token: str) -> Optional[Engine
         return None
 
     team["_id"] = str(team["_id"])
-    team["user_role"] = "owner"
+    # Role is retained only as team metadata. API-key capabilities are decided
+    # by the key permission set and can never administer the workspace.
+    team["user_role"] = "member"
 
     user = {
         "_id": str(api_context.get("user_id")),
@@ -104,12 +116,13 @@ async def _context_from_api_key(request: Request, token: str) -> Optional[Engine
         actor_type="api_key",
         api_key_id=api_context.get("api_key_id"),
         api_key_name=api_context.get("api_key_name"),
+        permissions=api_context.get("permissions", []),
     )
 
 
 async def get_engine_context(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(engine_security),
 ) -> EngineContext:
     """Resolve a HIC engine actor from a JWT or a `hic_...` API key."""
     if credentials is None:
@@ -138,7 +151,7 @@ async def get_engine_context(
 
 async def enforce_engine_subscription(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(engine_security),
 ) -> Optional[EngineContext]:
     """Authenticate engine routes and reserve a valid monthly execution slot."""
     if request.method == "GET" and request.url.path in PUBLIC_ENGINE_PATHS:
