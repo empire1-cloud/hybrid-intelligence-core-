@@ -6,7 +6,11 @@ from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
 
+from services.model_policy import enforce_approved_model
+
+
 load_dotenv()
+
 
 class Task(BaseModel):
     task: str
@@ -14,10 +18,12 @@ class Task(BaseModel):
     owner: str
     dependencies: List[str]
 
+
 class Phase(BaseModel):
     name: str
     duration: str
     tasks: List[Task]
+
 
 class ExecutionPlan(BaseModel):
     objective: str
@@ -26,18 +32,20 @@ class ExecutionPlan(BaseModel):
     critical_path: List[str]
     first_24_hours: List[str]
 
+
 class PlanBuilderEngine:
-    """Converts goals/strategies into actionable execution plans."""
-    
+    """Converts goals and strategies into actionable execution plans."""
+
     MODEL_CONFIG = {
         "gpt-5.2": ("openai", "gpt-5.2"),
+        "gpt-4o": ("openai", "gpt-4o"),
+        "gpt-4o-mini": ("openai", "gpt-4o-mini"),
         "claude-sonnet-4.5": ("anthropic", "claude-sonnet-4-5-20250929"),
-        "gemini-3-flash": ("gemini", "gemini-3-flash-preview")
+        "claude-3-5-sonnet": ("anthropic", "claude-3-5-sonnet-20241022"),
     }
-    
-    # Default to GPT-5.2 for planning (complex reasoning)
+
     DEFAULT_MODEL = "gpt-5.2"
-    
+
     SYSTEM_PROMPT = """You are the Plan Builder Engine.
 
 Your job is to convert a goal or strategy into a clear, actionable execution plan with timelines, milestones, and dependencies.
@@ -76,23 +84,25 @@ OUTPUT FORMAT (JSON ONLY):
 Return ONLY the JSON object. No other text."""
 
     @classmethod
-    def _get_api_key(cls) -> str:
-        return os.environ.get("EMERGENT_LLM_KEY")
-    
+    def _get_api_key(cls, provider: str) -> str:
+        if provider == "anthropic":
+            return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+        return os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+
     @classmethod
     def _create_chat(cls, model: str = None) -> LlmChat:
-        model = model or cls.DEFAULT_MODEL
-        api_key = cls._get_api_key()
-        provider, model_name = cls.MODEL_CONFIG.get(model, cls.MODEL_CONFIG[cls.DEFAULT_MODEL])
-        
+        approved_model = enforce_approved_model(model, cls.DEFAULT_MODEL)
+        provider, model_name = cls.MODEL_CONFIG[approved_model]
+        api_key = cls._get_api_key(provider)
+
         chat = LlmChat(
             api_key=api_key,
-            session_id=f"plan-builder-{model}",
+            session_id=f"plan-builder-{approved_model}",
             system_message=cls.SYSTEM_PROMPT
         ).with_model(provider, model_name)
-        
+
         return chat
-    
+
     @classmethod
     async def build_plan_async(
         cls,
@@ -101,37 +111,22 @@ Return ONLY the JSON object. No other text."""
         context: Optional[str] = None,
         model: Optional[str] = None
     ) -> dict:
-        """
-        Build an execution plan from a goal or strategy.
-        
-        Args:
-            goal: The objective to plan for
-            strategy: Optional strategy dict from Strategy Engine
-            context: Additional context
-            model: Override model selection
-            
-        Returns:
-            ExecutionPlan as dict
-        """
+        """Build an execution plan from a goal or strategy."""
         chat = cls._create_chat(model)
-        
-        # Build prompt
+
         prompt_parts = [f"Goal: {goal}"]
-        
+
         if strategy:
             prompt_parts.append(f"\nStrategy to execute:\n{json.dumps(strategy, indent=2)}")
-        
+
         if context:
             prompt_parts.append(f"\nAdditional context: {context}")
-        
+
         prompt = "\n".join(prompt_parts)
-        
         message = UserMessage(text=prompt)
         response = await chat.send_message(message)
-        
-        # Parse JSON from response
+
         try:
-            # Extract JSON if wrapped in markdown
             if "```json" in response:
                 start = response.find("```json") + 7
                 end = response.find("```", start)
@@ -140,10 +135,9 @@ Return ONLY the JSON object. No other text."""
                 start = response.find("```") + 3
                 end = response.find("```", start)
                 response = response[start:end].strip()
-            
+
             return json.loads(response)
         except json.JSONDecodeError:
-            # Return structured fallback
             return {
                 "objective": goal,
                 "phases": [
@@ -164,7 +158,7 @@ Return ONLY the JSON object. No other text."""
                 "critical_path": ["Manual review required"],
                 "first_24_hours": ["Retry with more specific goal"]
             }
-    
+
     @classmethod
     def build_plan(
         cls,
@@ -175,17 +169,9 @@ Return ONLY the JSON object. No other text."""
     ) -> dict:
         """Synchronous wrapper for plan building."""
         return asyncio.run(cls.build_plan_async(goal, strategy, context, model))
-    
+
     @classmethod
     async def convert_strategy_to_plan_async(cls, strategy: dict) -> dict:
-        """
-        Convert a Strategy Engine output directly into an execution plan.
-        
-        Args:
-            strategy: Output from Strategy Engine
-            
-        Returns:
-            ExecutionPlan as dict
-        """
+        """Convert a Strategy Engine output directly into an execution plan."""
         goal = strategy.get("summary", "Execute the provided strategy")
         return await cls.build_plan_async(goal=goal, strategy=strategy)

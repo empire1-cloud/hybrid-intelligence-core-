@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 from services.hybrid_core import get_core, TaskType
-from services.error_handler import ErrorHandler, PipelineStage
+
 
 router = APIRouter(tags=["core"])
 
@@ -30,68 +30,58 @@ class CoreResponse(BaseModel):
 
 @router.post("/core/execute", response_model=CoreResponse)
 async def core_execute(payload: CoreRequest):
-    """
-    Execute via Hybrid Intelligence Core.
-    
-    The Core automatically:
-    1. Classifies the task type
-    2. Routes to optimal model
-    3. Executes appropriate engine
-    4. Enforces canon rules
-    5. Monitors drift
-    6. Handles errors
-    """
+    """Execute through the complete HIC routing and governance pipeline."""
     core = get_core()
-    
+
     task_type = None
     if payload.task_type:
         try:
             task_type = TaskType(payload.task_type)
         except ValueError:
             pass
-    
+
     result = await core.execute(
         prompt=payload.prompt,
         task_type=task_type,
         context=payload.context,
         force_model=payload.force_model
     )
-    
+
     if result.success:
         return CoreResponse(
             success=True,
             data=result.data,
             metadata=result.metadata
         )
-    else:
-        return JSONResponse(
-            status_code=500,
-            content=result.error
-        )
+
+    return JSONResponse(
+        status_code=500,
+        content=result.error
+    )
 
 
 @router.post("/core/strategy-to-plan", response_model=CoreResponse)
 async def core_strategy_to_plan(payload: CoreRequest):
-    """Execute full strategy → plan pipeline via Core."""
+    """Execute the strategy-to-plan pipeline through HIC."""
     core = get_core()
-    
+
     result = await core.execute_strategy_to_plan(
         goal=payload.prompt,
         context=payload.context,
         force_model=payload.force_model
     )
-    
+
     if result.success:
         return CoreResponse(
             success=True,
             data=result.data,
             metadata=result.metadata
         )
-    else:
-        return JSONResponse(
-            status_code=500,
-            content=result.error
-        )
+
+    return JSONResponse(
+        status_code=500,
+        content=result.error
+    )
 
 
 @router.get("/core/status")
@@ -117,10 +107,11 @@ async def health_check():
     return {
         "status": "healthy",
         "pipeline": "hybrid-ai-stack",
+        "model_policy": "approved-non-google-only",
         "models": {
             "gpt-5.2": "available",
-            "claude-sonnet-4.5": "available",
-            "gemini-3-flash": "available"
+            "gpt-4o-mini": "available",
+            "claude-sonnet-4.5": "available"
         },
         "engines": [
             "hybrid_intelligence_core",
