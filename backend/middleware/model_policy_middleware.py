@@ -1,7 +1,6 @@
 """API boundary enforcement for the Empire-1 HIC model policy."""
 
 import json
-from typing import Iterable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -13,20 +12,13 @@ from services.model_policy import APPROVED_MODELS, BLOCKED_MODEL_TOKENS
 MODEL_FIELDS = ("model", "force_model")
 
 
-def _iter_model_values(value) -> Iterable[str]:
-    """Yield model override values from nested request payloads."""
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            if key in MODEL_FIELDS and isinstance(nested, str):
-                yield nested
-            yield from _iter_model_values(nested)
-    elif isinstance(value, list):
-        for nested in value:
-            yield from _iter_model_values(nested)
-
-
 class ModelPolicyMiddleware(BaseHTTPMiddleware):
-    """Fail closed when an API request asks HIC to use a blocked model."""
+    """Fail closed when an API execution asks HIC to use a blocked model.
+
+    Only top-level execution override fields are inspected. Customer content may
+    legitimately contain nested business or data fields named ``model`` and
+    must never be mistaken for a provider override.
+    """
 
     async def dispatch(self, request: Request, call_next):
         if request.method not in {"POST", "PUT", "PATCH"} or not request.url.path.startswith("/api/"):
@@ -45,25 +37,30 @@ class ModelPolicyMiddleware(BaseHTTPMiddleware):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return await call_next(request)
 
-        for model_value in _iter_model_values(payload):
-            candidate = model_value.strip().lower()
-            if any(token in candidate for token in BLOCKED_MODEL_TOKENS):
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "detail": "Google/Gemini models are not permitted in the Empire-1 HIC stack.",
-                        "code": "MODEL_POLICY_BLOCKED",
-                    },
-                )
+        if isinstance(payload, dict):
+            for field in MODEL_FIELDS:
+                model_value = payload.get(field)
+                if not isinstance(model_value, str):
+                    continue
 
-            if candidate not in APPROVED_MODELS:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "detail": f"Model is not approved for HIC execution: {candidate}",
-                        "code": "MODEL_POLICY_UNAPPROVED",
-                    },
-                )
+                candidate = model_value.strip().lower()
+                if any(token in candidate for token in BLOCKED_MODEL_TOKENS):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": "Google/Gemini models are not permitted in the Empire-1 HIC stack.",
+                            "code": "MODEL_POLICY_BLOCKED",
+                        },
+                    )
+
+                if candidate not in APPROVED_MODELS:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": f"Model is not approved for HIC execution: {candidate}",
+                            "code": "MODEL_POLICY_UNAPPROVED",
+                        },
+                    )
 
         async def receive():
             return {"type": "http.request", "body": raw_body, "more_body": False}
