@@ -1,0 +1,70 @@
+name: HIC Subscription CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile changed runtime modules
+        run: |
+          python -m compileall -q \
+            core/engine_context.py \
+            middleware/model_policy_middleware.py \
+            middleware/subscription_usage_middleware.py \
+            routers/engines/core.py \
+            services/billing_service.py \
+            services/hybrid_core.py \
+            services/model_policy.py \
+            services/plan_builder.py \
+            services/router.py \
+            services/strategy_engine.py \
+            server.py
+
+      - name: Install unit-test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run model policy unit tests
+        run: pytest -q tests/test_model_policy.py
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build production frontend
+        env:
+          CI: 'false'
+          REACT_APP_BACKEND_URL: http://localhost:8001
+        run: npm run build
