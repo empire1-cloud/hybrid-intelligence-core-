@@ -33,7 +33,7 @@ const HomePage = () => {
     try {
       const res = await authAxios().post(`/engines/money-pipeline`, {
         idea: "AI-powered task management for remote teams",
-        model: "gemini-3-flash"
+        model: "gpt-4o-mini"
       }, { timeout: 120000 });
       setTestResult({ success: true, data: res.data });
     } catch (e) {
@@ -59,7 +59,7 @@ const HomePage = () => {
       <header className="page-header">
         <h1>🧠 Hybrid Intelligence Core</h1>
         <p className="subtitle">
-          {currentTeam ? `${currentTeam.name} Workspace` : 'Multi-Model AI Pipeline System'}
+          {currentTeam ? `${currentTeam.name} Workspace` : 'Approved Multi-Model AI Pipeline System'}
         </p>
         {user && (
           <p className="welcome-text">Welcome back, {user.first_name}!</p>
@@ -86,7 +86,7 @@ const HomePage = () => {
         <div className="stat-card" data-testid="models-card">
           <span className="stat-icon">🤖</span>
           <div className="stat-content">
-            <span className="stat-label">LLM Models</span>
+            <span className="stat-label">Approved Models</span>
             <span className="stat-value">{health?.models ? Object.keys(health.models).length : 0}</span>
           </div>
         </div>
@@ -137,7 +137,7 @@ const HomePage = () => {
           <div className="action-card clickable" onClick={quickTest} data-testid="quick-test-card">
             <span className="action-icon">🚀</span>
             <h3>Quick Test</h3>
-            <p>Test Money Pipeline with sample idea</p>
+            <p>Test Money Pipeline with an approved low-latency model</p>
             {testLoading && <div className="mini-spinner"></div>}
           </div>
         </div>
