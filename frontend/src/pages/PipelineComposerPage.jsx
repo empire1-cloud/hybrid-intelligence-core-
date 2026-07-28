@@ -5,19 +5,19 @@ import { useAuth } from "../context/AuthContext";
 const APPROVED_PIPELINE_MODEL = "gpt-4o-mini";
 
 const AVAILABLE_ENGINES = [
-  { id: "strategy_engine", name: "Strategy Engine", icon: "🎯", desc: "Generate high-level strategies" },
-  { id: "plan_builder_engine", name: "Plan Builder", icon: "📋", desc: "Convert goals to execution plans" },
-  { id: "analysis_engine", name: "Analysis Engine", icon: "🔍", desc: "Deep SWOT analysis" },
-  { id: "opportunity_mapper_engine", name: "Opportunity Mapper", icon: "💡", desc: "Identify opportunities" },
-  { id: "evaluator_engine", name: "Evaluator Engine", icon: "⚖️", desc: "Score and evaluate" },
-  { id: "pricing_engine", name: "Pricing Engine", icon: "💰", desc: "Generate pricing structures" },
-  { id: "blueprint_engine", name: "Blueprint Engine", icon: "🏗️", desc: "System architecture" },
-  { id: "persona_engine", name: "Persona Engine", icon: "👤", desc: "User personas" },
-  { id: "anime_character_engine", name: "Anime Character", icon: "🎨", desc: "Create anime characters" },
-  { id: "anime_lore_engine", name: "Anime Lore", icon: "📚", desc: "World-building" },
-  { id: "anime_story_engine", name: "Anime Story", icon: "📖", desc: "Story arcs" },
-  { id: "art_direction_engine", name: "Art Direction", icon: "🖼️", desc: "Visual direction" },
-  { id: "money_pipeline_engine", name: "Money Pipeline", icon: "💵", desc: "Full monetization" },
+  { id: "strategy_engine", name: "Strategy Engine", tone: "gold", desc: "Generate high-level strategies" },
+  { id: "plan_builder_engine", name: "Plan Builder Engine", tone: "gold", desc: "Convert goals to execution plans" },
+  { id: "analysis_engine", name: "Analysis Engine", tone: "gold", desc: "Deep SWOT analysis" },
+  { id: "opportunity_mapper_engine", name: "Opportunity Mapper Engine", tone: "gold", desc: "Identify opportunities" },
+  { id: "evaluator_engine", name: "Evaluator Engine", tone: "gold", desc: "Score and evaluate" },
+  { id: "pricing_engine", name: "Pricing Engine", tone: "gold", desc: "Generate pricing structures" },
+  { id: "blueprint_engine", name: "Blueprint Engine", tone: "gold", desc: "System architecture" },
+  { id: "money_pipeline_engine", name: "Money Pipeline Engine", tone: "gold", desc: "Full monetization" },
+  { id: "persona_engine", name: "Persona Engine", tone: "pink", desc: "User personas" },
+  { id: "anime_character_engine", name: "Anime Character Engine", tone: "pink", desc: "Create anime characters" },
+  { id: "anime_lore_engine", name: "Anime Lore Engine", tone: "pink", desc: "World-building" },
+  { id: "anime_story_engine", name: "Anime Story Engine", tone: "pink", desc: "Story arcs" },
+  { id: "art_direction_engine", name: "Art Direction Engine", tone: "pink", desc: "Visual direction" },
 ];
 
 const PRESET_PIPELINES = {
@@ -27,6 +27,8 @@ const PRESET_PIPELINES = {
   anime_concept: { name: "Anime Full Concept", description: "Lore → Story → Character → Art Direction", steps: [{ engine: "anime_lore_engine", input_key: "world_concept", output_key: "lore" }, { engine: "anime_story_engine", input_key: "lore", output_key: "story" }, { engine: "anime_character_engine", input_key: "story.premise", output_key: "protagonist" }, { engine: "art_direction_engine", input_key: "story,lore", output_key: "art_direction" }] },
   product_launch: { name: "Product Launch", description: "Persona → Strategy → Pricing → Plan", steps: [{ engine: "persona_engine", input_key: "audience", output_key: "personas" }, { engine: "strategy_engine", input_key: "product_goal", output_key: "strategy" }, { engine: "pricing_engine", input_key: "product", output_key: "pricing" }, { engine: "plan_builder_engine", input_key: "strategy", output_key: "launch_plan" }] },
 };
+
+const STATUS_LABELS = { queued: "QUEUED", running: "RUNNING", done: "DONE", error: "FAILED" };
 
 const PipelineComposerPage = () => {
   const { authAxios } = useAuth();
@@ -47,7 +49,7 @@ const PipelineComposerPage = () => {
 
   const addStep = (engine) => {
     const engineInfo = AVAILABLE_ENGINES.find((item) => item.id === engine);
-    setSteps([...steps, { id: Date.now(), engine, name: engineInfo?.name || engine, icon: engineInfo?.icon || "⚙️", input_key: steps.length === 0 ? "input" : `step_${steps.length}`, output_key: `step_${steps.length + 1}` }]);
+    setSteps([...steps, { id: Date.now(), engine, name: engineInfo?.name || engine, tone: engineInfo?.tone || "gold", input_key: steps.length === 0 ? "input" : `step_${steps.length}`, output_key: `step_${steps.length + 1}` }]);
   };
 
   const removeStep = (index) => setSteps(steps.filter((_, itemIndex) => itemIndex !== index));
@@ -64,7 +66,7 @@ const PipelineComposerPage = () => {
     if (!preset) return;
     setSteps(preset.steps.map((step, index) => {
       const engineInfo = AVAILABLE_ENGINES.find((item) => item.id === step.engine);
-      return { id: Date.now() + index, engine: step.engine, name: engineInfo?.name || step.engine, icon: engineInfo?.icon || "⚙️", input_key: step.input_key, output_key: step.output_key };
+      return { id: Date.now() + index, engine: step.engine, name: engineInfo?.name || step.engine, tone: engineInfo?.tone || "gold", input_key: step.input_key, output_key: step.output_key };
     }));
     setShowLoadModal(false);
   };
@@ -127,7 +129,7 @@ const PipelineComposerPage = () => {
     for (let index = 0; index < steps.length; index += 1) {
       setCurrentStep(index);
       const step = steps[index];
-      const stepResult = { step: index + 1, engine: step.engine, name: step.name, icon: step.icon, input: currentInput, output: null, error: null, duration: 0, status: "running" };
+      const stepResult = { step: index + 1, engine: step.engine, name: step.name, tone: step.tone, input: currentInput, output: null, error: null, duration: 0, status: "running" };
       setResults([...pipelineResults, stepResult]);
       const startTime = Date.now();
 
@@ -154,29 +156,210 @@ const PipelineComposerPage = () => {
 
   const clearPipeline = () => { setSteps([]); setResults([]); setInitialInput(""); };
 
+  const engineCounts = steps.reduce((counts, step) => ({ ...counts, [step.engine]: (counts[step.engine] || 0) + 1 }), {});
+
+  const stepStatus = (index) => {
+    const result = results[index];
+    if (!result) return "queued";
+    if (result.status === "success") return "done";
+    if (result.status === "error") return "error";
+    return "running";
+  };
+
+  const allDone = steps.length > 0 && results.length === steps.length && results.every((result) => result.status === "success");
+  const failed = results.find((result) => result.status === "error");
+
+  let runStatusText = "ADD ENGINES TO BUILD YOUR PIPELINE";
+  if (steps.length > 0) {
+    if (executing && currentStep >= 0) {
+      runStatusText = `RUNNING STEP ${currentStep + 1} OF ${steps.length}: ${(steps[currentStep]?.name || "").toUpperCase()}`;
+    } else if (failed) {
+      runStatusText = `PIPELINE HALTED AT STEP ${failed.step} — ${failed.name.toUpperCase()}`;
+    } else if (allDone) {
+      runStatusText = `PIPELINE COMPLETE — ${steps.length} STEP${steps.length > 1 ? "S" : ""} EXECUTED`;
+    } else if (!initialInput.trim()) {
+      runStatusText = `${steps.length} STEP${steps.length > 1 ? "S" : ""} STAGED — AWAITING INITIAL INPUT`;
+    } else {
+      runStatusText = `${steps.length} STEP${steps.length > 1 ? "S" : ""} READY TO RUN`;
+    }
+  }
+
+  const runDisabled = executing || steps.length === 0 || !initialInput.trim();
+
   return (
-    <div className="page-container" data-testid="pipeline-composer-page">
-      <header className="page-header"><Link to="/" className="back-link">← Home</Link><h1>🔗 Pipeline Composer</h1><p className="subtitle">Chain engines into authenticated workflows. Each executed step uses one monthly execution.</p></header>
+    <div className="composer-page" data-testid="pipeline-composer-page">
+      <header className="composer-hero">
+        <Link to="/" className="composer-back">← Home</Link>
+        <div className="composer-eyebrow">WORKFLOW ORCHESTRATION</div>
+        <h1>Pipeline Composer</h1>
+        <p>Chain multiple engines together for complex, sequenced workflows. Each executed step uses one monthly execution.</p>
+      </header>
+
       <div className="composer-layout">
-        <aside className="composer-sidebar">
-          <div className="sidebar-section"><h3>Available Engines</h3><p className="sidebar-hint">Click to add to pipeline</p><div className="engine-selector" data-testid="engine-selector">{AVAILABLE_ENGINES.map((engine) => <button key={engine.id} className="engine-select-btn" onClick={() => addStep(engine.id)} disabled={executing} data-testid={`add-engine-${engine.id}`}><span className="engine-select-icon">{engine.icon}</span><span className="engine-select-name">{engine.name}</span></button>)}</div></div>
-          <div className="sidebar-section"><h3>Presets & Saved</h3><div className="preset-buttons"><button className="preset-btn" onClick={() => setShowLoadModal(true)} data-testid="load-btn">📂 Load Pipeline</button><button className="preset-btn" onClick={() => setShowSaveModal(true)} disabled={steps.length === 0} data-testid="save-btn">💾 Save Pipeline</button></div></div>
+        <aside className="composer-panel composer-sidebar">
+          <div className="panel-label">Available Engines</div>
+          <div className="panel-hint">Click to add to pipeline</div>
+          <div className="engine-selector" data-testid="engine-selector">
+            {AVAILABLE_ENGINES.map((engine) => (
+              <button
+                key={engine.id}
+                type="button"
+                className="engine-row"
+                onClick={() => addStep(engine.id)}
+                disabled={executing}
+                title={engine.desc}
+                data-testid={`add-engine-${engine.id}`}
+              >
+                <span className={`engine-tone engine-tone-${engine.tone}`} />
+                <span className="engine-row-name">{engine.name}</span>
+                {engineCounts[engine.id] > 0 && <span className="engine-badge">×{engineCounts[engine.id]}</span>}
+              </button>
+            ))}
+          </div>
+
+          <div className="panel-label panel-label-spaced">Presets &amp; Saved</div>
+          <div className="preset-buttons">
+            <button type="button" className="preset-btn" onClick={() => setShowLoadModal(true)} data-testid="load-btn">Load Pipeline</button>
+            <button type="button" className="preset-btn" onClick={() => setShowSaveModal(true)} disabled={steps.length === 0} data-testid="save-btn">Save Pipeline</button>
+          </div>
         </aside>
 
-        <main className="composer-main">
-          <section className="pipeline-builder" data-testid="pipeline-builder">
-            <div className="builder-header"><h3>Pipeline Steps ({steps.length})</h3><button className="clear-btn" onClick={clearPipeline} disabled={executing || steps.length === 0}>Clear All</button></div>
-            {steps.length === 0 ? <div className="empty-pipeline"><span>🔗</span><p>Add engines from the left panel to build your pipeline</p></div> : <div className="pipeline-steps" data-testid="pipeline-steps">{steps.map((step, index) => <div key={step.id} className={`pipeline-step ${currentStep === index ? 'running' : ''}`}><div className="step-number">{index + 1}</div><div className="step-content"><span className="step-icon">{step.icon}</span><span className="step-name">{step.name}</span></div><div className="step-actions"><button onClick={() => moveStep(index, -1)} disabled={index === 0 || executing} title="Move up">↑</button><button onClick={() => moveStep(index, 1)} disabled={index === steps.length - 1 || executing} title="Move down">↓</button><button onClick={() => removeStep(index)} disabled={executing} className="remove-btn" title="Remove">×</button></div>{index < steps.length - 1 && <div className="step-connector">→</div>}</div>)}</div>}
-            <div className="pipeline-input-section"><label>Initial Input</label><textarea value={initialInput} onChange={(event) => setInitialInput(event.target.value)} placeholder="Enter the starting input for your pipeline" rows={3} disabled={executing} data-testid="initial-input" /><button className="execute-btn" onClick={executePipeline} disabled={executing || steps.length === 0 || !initialInput.trim()} data-testid="execute-btn">{executing ? <><span className="btn-spinner"></span> Executing Step {currentStep + 1}/{steps.length}...</> : <>▶ Execute Pipeline</>}</button></div>
-          </section>
+        <main className="composer-panel composer-main">
+          <div className="builder-header">
+            <div className="panel-label">Pipeline Steps ({steps.length})</div>
+            <button type="button" className="clear-btn" onClick={clearPipeline} disabled={executing || steps.length === 0}>CLEAR ALL</button>
+          </div>
 
-          {results.length > 0 && <section className="results-timeline" data-testid="results-timeline"><h3>Execution Timeline</h3><div className="timeline">{results.map((result, index) => <div key={index} className={`timeline-item ${result.status}`} data-testid={`timeline-item-${index}`}><div className="timeline-marker">{result.status === "running" ? <span className="marker-spinner"></span> : result.status === "success" ? <span className="marker-success">✓</span> : <span className="marker-error">✗</span>}</div><div className="timeline-content"><div className="timeline-header"><span className="timeline-step">Step {result.step}</span><span className="timeline-engine">{result.icon} {result.name}</span>{result.duration > 0 && <span className="timeline-duration">{(result.duration / 1000).toFixed(1)}s</span>}</div><div className="timeline-io"><details className="io-section"><summary>📥 Input</summary><pre>{typeof result.input === 'string' ? result.input : JSON.stringify(result.input, null, 2)}</pre></details>{result.output && <details className="io-section" open={index === results.length - 1}><summary>📤 Output</summary><pre>{JSON.stringify(result.output, null, 2)}</pre></details>}{result.error && <div className="io-error"><strong>Error:</strong> {result.error}</div>}</div></div></div>)}</div></section>}
+          {steps.length === 0 ? (
+            <div className="empty-pipeline">Add engines from the left panel to build your pipeline</div>
+          ) : (
+            <div className="pipeline-steps" data-testid="pipeline-steps">
+              {steps.map((step, index) => {
+                const status = stepStatus(index);
+                return (
+                  <div className={`pipeline-step pipeline-step-${status}`} key={step.id}>
+                    <span className="step-index">{index + 1}</span>
+                    <span className="step-name">{step.name}</span>
+                    <span className={`step-status step-status-${status}`}>{STATUS_LABELS[status]}</span>
+                    <span className={`status-dot status-dot-${status}`} />
+                    <span className="step-actions">
+                      <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0 || executing} title="Move up">↑</button>
+                      <button type="button" onClick={() => moveStep(index, 1)} disabled={index === steps.length - 1 || executing} title="Move down">↓</button>
+                      <button type="button" className="step-remove" onClick={() => removeStep(index)} disabled={executing} title="Remove">×</button>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="pipeline-input-section">
+            <label className="panel-label" htmlFor="initial-input">Initial Input</label>
+            <textarea
+              id="initial-input"
+              value={initialInput}
+              onChange={(event) => setInitialInput(event.target.value)}
+              placeholder="Enter the starting input for your pipeline (e.g., 'Build an AI-powered fitness app')"
+              rows={3}
+              disabled={executing}
+              data-testid="initial-input"
+            />
+          </div>
+
+          <div className="composer-runbar">
+            <div className="run-status">{runStatusText}</div>
+            <button type="button" className="run-btn" onClick={executePipeline} disabled={runDisabled} data-testid="execute-btn">
+              {executing ? <><span className="btn-spinner" /> RUNNING…</> : "RUN PIPELINE"}
+            </button>
+          </div>
         </main>
       </div>
 
-      {showSaveModal && <div className="modal-overlay" onClick={() => setShowSaveModal(false)}><div className="modal-content modal-small" onClick={(event) => event.stopPropagation()}><div className="modal-header"><h2>💾 Save Pipeline</h2><button className="modal-close" onClick={() => setShowSaveModal(false)}>×</button></div><div className="modal-body"><div className="form-group"><label>Pipeline Name</label><input type="text" value={pipelineName} onChange={(event) => setPipelineName(event.target.value)} placeholder="My Custom Pipeline" data-testid="pipeline-name-input" /></div><div className="save-preview"><p><strong>Steps:</strong> {steps.map((step) => step.name).join(" → ")}</p></div><button className="btn-submit" onClick={savePipeline} disabled={!pipelineName.trim()} data-testid="confirm-save-btn">Save Pipeline</button></div></div></div>}
+      {results.length > 0 && (
+        <section className="results-timeline" data-testid="results-timeline">
+          <div className="panel-label">Execution Timeline</div>
+          <div className="timeline">
+            {results.map((result, index) => (
+              <div key={index} className={`timeline-item ${result.status}`} data-testid={`timeline-item-${index}`}>
+                <div className="timeline-marker">
+                  {result.status === "running" ? <span className="marker-spinner" /> : result.status === "success" ? <span className="marker-success">✓</span> : <span className="marker-error">✗</span>}
+                </div>
+                <div className="timeline-content">
+                  <div className="timeline-header">
+                    <span className="timeline-step">STEP {result.step}</span>
+                    <span className="timeline-engine">{result.name}</span>
+                    {result.duration > 0 && <span className="timeline-duration">{(result.duration / 1000).toFixed(1)}s</span>}
+                  </div>
+                  <div className="timeline-io">
+                    <details className="io-section">
+                      <summary>Input</summary>
+                      <pre>{typeof result.input === "string" ? result.input : JSON.stringify(result.input, null, 2)}</pre>
+                    </details>
+                    {result.output && (
+                      <details className="io-section" open={index === results.length - 1}>
+                        <summary>Output</summary>
+                        <pre>{JSON.stringify(result.output, null, 2)}</pre>
+                      </details>
+                    )}
+                    {result.error && <div className="io-error"><strong>Error:</strong> {result.error}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {showLoadModal && <div className="modal-overlay" onClick={() => setShowLoadModal(false)}><div className="modal-content" onClick={(event) => event.stopPropagation()}><div className="modal-header"><h2>📂 Load Pipeline</h2><button className="modal-close" onClick={() => setShowLoadModal(false)}>×</button></div><div className="modal-body"><h4>Preset Pipelines</h4><div className="preset-list">{Object.entries(PRESET_PIPELINES).map(([key, preset]) => <div key={key} className="preset-item" onClick={() => loadPreset(key)} data-testid={`preset-${key}`}><div className="preset-info"><strong>{preset.name}</strong><p>{preset.description}</p></div><button className="btn-small btn-primary">Load</button></div>)}</div>{Object.keys(savedPipelines).length > 0 && <><h4>Saved Pipelines</h4><div className="preset-list">{Object.entries(savedPipelines).map(([key, pipeline]) => <div key={key} className="preset-item"><div className="preset-info"><strong>{pipeline.name}</strong><p>{pipeline.steps.map((step) => step.name).join(" → ")}</p></div><div className="preset-actions"><button className="btn-small btn-primary" onClick={() => loadSavedPipeline(key)}>Load</button><button className="btn-small btn-danger" onClick={() => deleteSavedPipeline(key)}>🗑</button></div></div>)}</div></>}</div></div></div>}
+      {showSaveModal && (
+        <div className="modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="modal-content modal-small" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header"><h2>Save Pipeline</h2><button className="modal-close" onClick={() => setShowSaveModal(false)}>×</button></div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Pipeline Name</label>
+                <input type="text" value={pipelineName} onChange={(event) => setPipelineName(event.target.value)} placeholder="My Custom Pipeline" data-testid="pipeline-name-input" />
+              </div>
+              <div className="save-preview"><p><strong>Steps:</strong> {steps.map((step) => step.name).join(" → ")}</p></div>
+              <button className="btn-submit" onClick={savePipeline} disabled={!pipelineName.trim()} data-testid="confirm-save-btn">Save Pipeline</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLoadModal && (
+        <div className="modal-overlay" onClick={() => setShowLoadModal(false)}>
+          <div className="modal-content" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header"><h2>Load Pipeline</h2><button className="modal-close" onClick={() => setShowLoadModal(false)}>×</button></div>
+            <div className="modal-body">
+              <h4>Preset Pipelines</h4>
+              <div className="preset-list">
+                {Object.entries(PRESET_PIPELINES).map(([key, preset]) => (
+                  <div key={key} className="preset-item" onClick={() => loadPreset(key)} data-testid={`preset-${key}`}>
+                    <div className="preset-info"><strong>{preset.name}</strong><p>{preset.description}</p></div>
+                    <button className="btn-small btn-primary">Load</button>
+                  </div>
+                ))}
+              </div>
+              {Object.keys(savedPipelines).length > 0 && (
+                <>
+                  <h4>Saved Pipelines</h4>
+                  <div className="preset-list">
+                    {Object.entries(savedPipelines).map(([key, pipeline]) => (
+                      <div key={key} className="preset-item">
+                        <div className="preset-info"><strong>{pipeline.name}</strong><p>{pipeline.steps.map((step) => step.name).join(" → ")}</p></div>
+                        <div className="preset-actions">
+                          <button className="btn-small btn-primary" onClick={() => loadSavedPipeline(key)}>Load</button>
+                          <button className="btn-small btn-danger" onClick={() => deleteSavedPipeline(key)}>Delete</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
