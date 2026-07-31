@@ -16,6 +16,7 @@ load_dotenv(ROOT_DIR / '.env')
 from database import connect_to_database, close_database_connection, get_database
 from routers.sla113 import seed_default_pipelines, seed_default_lobbies, start_worker, stop_worker
 from routers.empire1 import router as empire1_router, seed_ecosystem
+from routers.empire_intake import router as empire_intake_router
 from core.engine_context import enforce_engine_subscription
 
 
@@ -35,9 +36,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Hybrid Intelligence Core",
-    description="Empire-1 hosted multi-model intelligence application using approved non-Google providers.",
-    version="2.1.0",
+    title="Empire-1 Hybrid Intelligence Core",
+    description="Empire-1 hosted multi-model intelligence and execution core using approved non-Google providers.",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -83,11 +84,12 @@ api_router.include_router(billing_router)
 api_router.include_router(api_keys_router)
 api_router.include_router(admin_router)
 api_router.include_router(system_router)
+api_router.include_router(empire_intake_router)
 
 api_router.include_router(history_protected_router)
 api_router.include_router(pipelines_router)
 
-# Executable HIC engine surfaces require a JWT workspace or valid hic_ API key.
+# Executable Empire-1 HIC engine surfaces require a JWT workspace or valid hic_ API key.
 # The dependency checks the monthly allowance before execution; successful usage
 # is committed by SubscriptionUsageMiddleware after the route returns.
 engine_dependencies = [Depends(enforce_engine_subscription)]
@@ -109,10 +111,11 @@ api_router.include_router(art_direction_router, dependencies=engine_dependencies
 api_router.include_router(money_pipeline_router, dependencies=engine_dependencies)
 
 # Existing analytics transport remains read-only/public in this release so its
-# polling and WebSocket dashboard are not broken by the new execution gate.
+# polling and WebSocket dashboard are not broken by the execution gate.
 api_router.include_router(analytics_router)
 
-# SLA113 remains a separately commercialized sovereign product surface.
+# SLA113 is Empire-1's deeper tenant, policy, operator, and product-factory layer.
+# It remains commercially distinct without being separated from the Empire-1 parent.
 api_router.include_router(sla113_router)
 
 
@@ -131,10 +134,12 @@ class StatusCheckCreate(BaseModel):
 @api_router.get("/")
 async def root():
     return {
+        "parent": "Empire-1",
         "product": "Hybrid Intelligence Core",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "billing": "monthly_cancel_anytime",
         "model_policy": "approved_non_google_only",
+        "canon": "WE EVOLVE. NEVER DELETE.",
     }
 
 
@@ -142,7 +147,9 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "version": "2.1.0",
+        "parent": "Empire-1",
+        "product": "Hybrid Intelligence Core",
+        "version": "2.2.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -201,9 +208,10 @@ async def empire1_status():
     return {
         "universe": "empire1",
         "status": "online",
-        "description": "Hybrid Intelligence Core — 19 AI Engines",
-        "product": "Hybrid Intelligence SaaS",
+        "description": "Empire-1 Hybrid Intelligence Core — 19 AI Engines",
+        "product": "Empire-1 Hybrid Intelligence SaaS",
         "billing": "monthly_cancel_anytime",
+        "hic_is_inside_empire1": True,
     }
 
 
@@ -214,6 +222,7 @@ async def southern_status():
         "status": "online",
         "description": "Southern Lyfestyle Game OS",
         "product": "Southern Game OS",
+        "parent": "Empire-1",
     }
 
 
@@ -225,4 +234,5 @@ async def soulfire_status():
         "description": "Soulfire Ecosystem Blueprint (ASW, El Coro, Sentinel, SL Universal)",
         "product": "Lyrica 3 Pro — AI Music Creation",
         "engine": "Empire-1 approved provider stack",
+        "parent": "Empire-1",
     }
