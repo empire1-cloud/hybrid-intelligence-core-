@@ -71,6 +71,7 @@ function RootRouter() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
             <Route path="/invite/accept" element={<AcceptInvitePage />} />
+            <Route path="/licensing" element={<LicensingPage />} />
 
             {/* Protected */}
             <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
@@ -84,7 +85,6 @@ function RootRouter() {
             <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
             <Route path="/settings/api-keys" element={<ProtectedRoute><APIKeysPage /></ProtectedRoute>} />
             <Route path="/admin/overview" element={<ProtectedRoute><AdminOverviewPage /></ProtectedRoute>} />
-            <Route path="/licensing" element={<ProtectedRoute><LicensingPage /></ProtectedRoute>} />
           </Routes>
         </main>
       </div>
