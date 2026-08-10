@@ -10,8 +10,8 @@ const APP_PLANS = [
     cadence: '/month',
     description: 'A real HIC workspace for learning the system and running a small monthly workload.',
     items: ['100 executions / month', '3 team members', '2 API keys', '5 pipelines', 'Basic engines'],
-    action: 'Create a free workspace',
-    href: '/signup',
+    action: 'Open your workspace',
+    href: '/',
   },
   {
     tag: 'Hosted HIC App',
@@ -20,8 +20,8 @@ const APP_PLANS = [
     cadence: '/month',
     description: 'The complete hosted application for builders who want engines, pipelines, history, analytics, API keys, and a team workspace.',
     items: ['5,000 executions / month', '10 team members', '10 API keys', '50 pipelines', 'All approved HIC engines', 'Advanced analytics'],
-    action: 'Start with HIC Pro',
-    href: '/signup',
+    action: 'Open billing',
+    href: '/billing',
     featured: true,
   },
   {
