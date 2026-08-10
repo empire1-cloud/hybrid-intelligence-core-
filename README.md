@@ -1,5 +1,7 @@
 # Hybrid Intelligence Core
 
+> **Repository boundary:** This repository preserves the pure HIC engine and its authenticated operator workspace. HIC is not a standalone public company, universe, or storefront. Customer-facing HIC positioning, pricing, licensing, and deployment entry live inside [`empire1-cloud/Empire-1`](https://github.com/empire1-cloud/Empire-1).
+
 Empire-1 HIC is a hosted multi-model intelligence application with 19 specialized engines, Pipeline Composer, execution history, analytics, team workspaces, API keys, usage metering, and Stripe subscription billing.
 
 ## Product model
