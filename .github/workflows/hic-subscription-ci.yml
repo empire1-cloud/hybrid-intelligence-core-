@@ -23,27 +23,56 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile changed runtime modules
+      - name: Compile runtime modules
+        # Syntax gate over the whole backend tree. This catches malformed files
+        # but NOT unresolvable imports -- compileall never imports anything --
+        # which is why the import check below exists.
         run: |
           python -m compileall -q \
-            core/engine_context.py \
-            middleware/model_policy_middleware.py \
-            middleware/subscription_usage_middleware.py \
-            routers/engines/core.py \
-            services/billing_service.py \
-            services/hybrid_core.py \
-            services/model_policy.py \
-            services/plan_builder.py \
-            services/router.py \
-            services/strategy_engine.py \
-            server.py
+            -x '(^|/)(archived|__pycache__|emergentintegrations_local_backup)/' \
+            core database middleware models routers services sla113 server.py
 
-      - name: Install unit-test dependency
-        run: python -m pip install --disable-pip-version-check pytest
+      - name: Install import-check dependencies
+        # The full requirements.txt cannot resolve (emergentintegrations 0.1.1
+        # conflicts with the pinned litellm wheel), so this installs the subset
+        # the application actually imports, at the versions requirements.txt
+        # pins. Keep in sync when a new third-party import is added.
+        run: |
+          python -m pip install --disable-pip-version-check -q \
+            bcrypt==4.1.3 \
+            email-validator==2.3.0 \
+            fastapi==0.135.3 \
+            httpx==0.28.1 \
+            motor==3.3.1 \
+            psutil==7.2.2 \
+            pydantic==2.12.5 \
+            pydantic-settings==2.13.1 \
+            PyJWT==2.11.0 \
+            pymongo==4.5.0 \
+            python-dotenv==1.2.2 \
+            python-multipart==0.0.22 \
+            requests==2.33.1 \
+            stripe==15.0.1 \
+            uvicorn==0.44.0 \
+            websockets==16.0 \
+            pytest
+
+      - name: Provide emergentintegrations from the vendored copy
+        # emergentintegrations is not on PyPI. The repo carries a self-declared
+        # drop-in copy; using it keeps this job hermetic instead of depending on
+        # an external index being reachable at build time.
+        run: |
+          mkdir -p "$RUNNER_TEMP/shim"
+          cp -r emergentintegrations_local_backup "$RUNNER_TEMP/shim/emergentintegrations"
+          echo "PYTHONPATH=.:$RUNNER_TEMP/shim" >> "$GITHUB_ENV"
+
+      - name: Import the application and check route wiring
+        # Imports every registered router and runs every route decorator. A
+        # module that does not exist, or a removed framework argument, fails
+        # here instead of at container start.
+        run: python -m pytest -q tests/test_app_contract.py
 
       - name: Run model policy unit tests
-        env:
-          PYTHONPATH: .
         run: python -m pytest -q tests/test_model_policy.py
 
   frontend-build:
