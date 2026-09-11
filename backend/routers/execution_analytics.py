@@ -15,17 +15,15 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
-from database import execution_logs_collection, pipelines_collection, users_collection
-from core.auth_service import verify_user
-from core.subscription_service import get_user_team
+from database import execution_logs_collection, pipelines_collection
+from core.engine_context import get_engine_context, EngineContext
 
 router = APIRouter(tags=["analytics"], prefix="/analytics")
 
 
 @router.get("/executions/summary")
 async def execution_summary(
-    user_id: str = Depends(verify_user),
-    team_id: str = Depends(get_user_team),
+    ctx: EngineContext = Depends(get_engine_context),
     hours: int = Query(24, ge=1, le=168)  # Last N hours
 ) -> Dict[str, Any]:
     """
@@ -37,6 +35,8 @@ async def execution_summary(
     - Top engines by execution count
     - Quality metrics
     """
+    ctx.require_read()
+    team_id = ctx.team_id
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
 
@@ -155,10 +155,9 @@ async def execution_summary(
 
 @router.get("/executions/trend")
 async def execution_trend(
-    user_id: str = Depends(verify_user),
-    team_id: str = Depends(get_user_team),
+    ctx: EngineContext = Depends(get_engine_context),
     days: int = Query(7, ge=1, le=90),
-    granularity: str = Query("day", regex="^(hour|day)$")
+    granularity: str = Query("day", pattern="^(hour|day)$")
 ) -> Dict[str, Any]:
     """
     Execution trend over time (hourly or daily granularity).
@@ -169,6 +168,8 @@ async def execution_trend(
     - Average cost
     - Average latency
     """
+    ctx.require_read()
+    team_id = ctx.team_id
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(days=days)
 
@@ -227,8 +228,7 @@ async def execution_trend(
 
 @router.get("/executions/by-engine")
 async def executions_by_engine(
-    user_id: str = Depends(verify_user),
-    team_id: str = Depends(get_user_team),
+    ctx: EngineContext = Depends(get_engine_context),
     hours: int = Query(24, ge=1, le=168)
 ) -> Dict[str, Any]:
     """
@@ -240,6 +240,8 @@ async def executions_by_engine(
     - Quality metrics
     - Provider/model split
     """
+    ctx.require_read()
+    team_id = ctx.team_id
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
 
@@ -291,8 +293,7 @@ async def executions_by_engine(
 
 @router.get("/executions/by-pipeline")
 async def executions_by_pipeline(
-    user_id: str = Depends(verify_user),
-    team_id: str = Depends(get_user_team),
+    ctx: EngineContext = Depends(get_engine_context),
     hours: int = Query(24, ge=1, le=168)
 ) -> Dict[str, Any]:
     """
@@ -303,6 +304,8 @@ async def executions_by_pipeline(
     - Total cost
     - Average latency
     """
+    ctx.require_read()
+    team_id = ctx.team_id
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
 
@@ -359,8 +362,7 @@ async def executions_by_pipeline(
 
 @router.get("/executions/cost-analysis")
 async def cost_analysis(
-    user_id: str = Depends(verify_user),
-    team_id: str = Depends(get_user_team),
+    ctx: EngineContext = Depends(get_engine_context),
     hours: int = Query(24, ge=1, le=168)
 ) -> Dict[str, Any]:
     """
@@ -368,6 +370,8 @@ async def cost_analysis(
 
     Returns cost breakdown and per-execution cost.
     """
+    ctx.require_read()
+    team_id = ctx.team_id
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
 
@@ -470,8 +474,7 @@ async def cost_analysis(
 
 @router.get("/executions/quality-metrics")
 async def quality_metrics(
-    user_id: str = Depends(verify_user),
-    team_id: str = Depends(get_user_team),
+    ctx: EngineContext = Depends(get_engine_context),
     hours: int = Query(24, ge=1, le=168)
 ) -> Dict[str, Any]:
     """
@@ -483,6 +486,8 @@ async def quality_metrics(
     - Latency distribution (p50, p95, p99)
     - Provider quality comparison
     """
+    ctx.require_read()
+    team_id = ctx.team_id
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
 
