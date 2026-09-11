@@ -11,6 +11,7 @@ import json
 import asyncio
 from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
+from services.model_policy import enforce_approved_model
 from .startup_copilot_models import (
     IdeaValidationInput, IdeaValidationOutput,
     BusinessModelInput, BusinessModelOutput,
@@ -34,12 +35,55 @@ class StartupCopilotEngine:
 
     MODEL_CONFIG = {
         "gpt-5.2": ("openai", "gpt-5.2"),
+        "gpt-4o": ("openai", "gpt-4o"),
+        "gpt-4o-mini": ("openai", "gpt-4o-mini"),
         "claude-sonnet-4.5": ("anthropic", "claude-sonnet-4-5-20250929"),
-        "gemini-3-flash": ("gemini", "gemini-3-flash-preview")
+        "claude-3-5-sonnet": ("anthropic", "claude-3-5-sonnet-20241022"),
     }
 
     # Claude best for founder guidance (reasoning + nuance)
     DEFAULT_MODEL = "claude-sonnet-4.5"
+
+    SYSTEM_PROMPT = (
+        "You are a founder advisor. Return valid JSON only, matching the schema "
+        "named in the prompt. No markdown, no commentary outside the JSON object."
+    )
+
+    @classmethod
+    def _get_api_key(cls, provider: str) -> str:
+        """Get a provider-specific API key without Google fallbacks."""
+        if provider == "anthropic":
+            return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+        return os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+
+    @classmethod
+    def _create_chat(cls, model: Optional[str] = None) -> LlmChat:
+        """Create a configured chat instance after enforcing model policy."""
+        approved_model = enforce_approved_model(model or cls.DEFAULT_MODEL)
+        provider, model_name = cls.MODEL_CONFIG[approved_model]
+
+        return LlmChat(
+            api_key=cls._get_api_key(provider),
+            session_id=f"startup-copilot-{approved_model}",
+            system_message=cls.SYSTEM_PROMPT,
+        ).with_model(provider, model_name)
+
+    @classmethod
+    async def _ask(cls, prompt: str, model: Optional[str] = None) -> str:
+        """Send a prompt to an approved model and return the response text."""
+        chat = cls._create_chat(model)
+        return await chat.send_message(UserMessage(text=prompt))
+
+    @staticmethod
+    def _strip_fences(response_text: str) -> str:
+        """Unwrap a ```json fenced block so json.loads sees the object itself."""
+        text = (response_text or "").strip()
+        for fence in ("```json", "```"):
+            if fence in text:
+                start = text.find(fence) + len(fence)
+                end = text.find("```", start)
+                return (text[start:end] if end != -1 else text[start:]).strip()
+        return text
 
 
 class IdeaValidationEngine(StartupCopilotEngine):
@@ -114,18 +158,11 @@ Format your response as JSON matching the IdeaValidationOutput schema.
 """
 
         # Call LLM
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         # Parse response
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return IdeaValidationOutput(**result_json)
         except (json.JSONDecodeError, ValueError) as e:
             # Fallback if LLM output isn't perfectly formatted
@@ -133,7 +170,7 @@ Format your response as JSON matching the IdeaValidationOutput schema.
                 verdict="pivot",
                 confidence=0.5,
                 findings=[],
-                summary=response.message.content,
+                summary=response_text,
                 next_steps=["Conduct more customer interviews"],
                 founder_market_fit_score=5.0
             )
@@ -199,17 +236,10 @@ Target metrics:
 Format response as JSON matching BusinessModelOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return BusinessModelOutput(**result_json)
         except:
             return BusinessModelOutput(
@@ -281,17 +311,10 @@ Include key narrative hooks that make your story compelling.
 Format response as JSON matching FundraisingOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return FundraisingOutput(**result_json)
         except:
             return FundraisingOutput(
@@ -351,17 +374,10 @@ Channel recommendations:
 Format response as JSON matching GTMOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return GTMOutput(**result_json)
         except:
             return GTMOutput(
@@ -415,17 +431,10 @@ RICE = (Reach × Impact × Confidence) / Effort
 Format response as JSON matching ProductOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return ProductOutput(**result_json)
         except:
             return ProductOutput(
@@ -477,17 +486,10 @@ Each email should follow this pattern:
 Format response as JSON matching SalesOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return SalesOutput(**result_json)
         except:
             return SalesOutput(
@@ -535,17 +537,10 @@ Content pillar structure:
 Format response as JSON matching MarketingOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return MarketingOutput(**result_json)
         except:
             return MarketingOutput(
@@ -599,17 +594,10 @@ A/B testing basics:
 Format response as JSON matching GrowthOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return GrowthOutput(**result_json)
         except:
             return GrowthOutput(
@@ -661,17 +649,10 @@ OKR structure:
 Format response as JSON matching OperationsOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return OperationsOutput(**result_json)
         except:
             return OperationsOutput(
@@ -718,17 +699,10 @@ Burn rate calculation:
 Format response as JSON matching FinanceOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return FinanceOutput(**result_json)
         except:
             return FinanceOutput(
@@ -779,17 +753,10 @@ Health score weights:
 Format response as JSON matching HealthScoreOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return HealthScoreOutput(**result_json)
         except:
             return HealthScoreOutput(
@@ -849,17 +816,10 @@ Documents needed:
 Format response as JSON matching LegalOutput schema.
 """
 
-        llm = LlmChat(
-            model_name=self.DEFAULT_MODEL,
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
-
-        response = await llm.complete_chat_async(
-            messages=[UserMessage(content=prompt)]
-        )
+        response_text = await self._ask(prompt)
 
         try:
-            result_json = json.loads(response.message.content)
+            result_json = json.loads(self._strip_fences(response_text))
             return LegalOutput(**result_json)
         except:
             return LegalOutput(
