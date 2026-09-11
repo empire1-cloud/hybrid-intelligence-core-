@@ -40,7 +40,7 @@ from services.startup_copilot_models import (
     LegalInput, LegalOutput
 )
 
-router = APIRouter(prefix="/api/startup-copilot", tags=["startup-copilot"])
+router = APIRouter(prefix="/startup-copilot", tags=["startup-copilot"])
 logger = logging.getLogger(__name__)
 
 # Initialize all skill engines

@@ -111,6 +111,13 @@ const AppHeader = () => {
         >
           Composer
         </Link>
+        <Link
+          to="/founder-copilot"
+          className="nav-link"
+          data-testid="founder-copilot-nav"
+        >
+          Copilot
+        </Link>
         <Link to="/analytics" className="nav-link" data-testid="analytics-nav">
           Analytics
         </Link>
