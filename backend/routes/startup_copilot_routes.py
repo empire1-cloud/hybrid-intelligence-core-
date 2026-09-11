@@ -40,7 +40,9 @@ from services.startup_copilot_models import (
     LegalInput, LegalOutput
 )
 
-router = APIRouter(prefix="/api/startup-copilot", tags=["startup-copilot"])
+# api_router in server.py already carries prefix="/api"; declaring it again here
+# would mount every endpoint under /api/api and 404 the frontend's calls.
+router = APIRouter(prefix="/startup-copilot", tags=["startup-copilot"])
 logger = logging.getLogger(__name__)
 
 # Initialize all skill engines
