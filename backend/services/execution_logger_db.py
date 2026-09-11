@@ -26,16 +26,35 @@ async def log_execution(
     pipeline_id: Optional[str] = None,
     endpoint: Optional[str] = None,
     method: Optional[str] = None,
+    # Instrumentation metrics
+    execution_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    cost_usd: Optional[float] = None,
+    confidence: Optional[float] = None,
 ) -> str:
     """
-    Log an engine execution to the database.
+    Log an engine execution to the database with full instrumentation metrics.
     Returns the created log ID.
     """
+    import uuid
     now = datetime.now(timezone.utc)
-    
+
+    # Generate execution_id if not provided
+    if not execution_id:
+        execution_id = str(uuid.uuid4())
+
+    # Calculate total tokens
+    total_tokens = None
+    if input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+
     log_doc = {
         "team_id": team_id,
         "user_id": user_id,
+        "execution_id": execution_id,
         "engine": engine,
         "pipeline_id": pipeline_id,
         "input_data": _sanitize_for_mongo(input_data),
@@ -46,10 +65,18 @@ async def log_execution(
         "duration_ms": duration_ms,
         "endpoint": endpoint,
         "method": method,
+        # Instrumentation metrics
+        "provider": provider,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cost_usd": cost_usd,
+        "confidence": confidence,
         "created_at": now,
         "completed_at": now if output_data or error_message else None,
     }
-    
+
     result = await execution_logs_collection().insert_one(log_doc)
     
     # Also create audit log for engine executions
@@ -133,6 +160,7 @@ async def get_team_execution_logs(
             "id": str(log["_id"]),
             "team_id": log["team_id"],
             "user_id": log["user_id"],
+            "execution_id": log.get("execution_id"),
             "engine": log["engine"],
             "pipeline_id": log.get("pipeline_id"),
             "input_summary": _summarize_data(log.get("input_data")),
@@ -141,6 +169,14 @@ async def get_team_execution_logs(
             "status": log["status"],
             "source": log.get("source", "direct"),
             "duration_ms": log.get("duration_ms", 0),
+            # Instrumentation metrics
+            "provider": log.get("provider"),
+            "model": log.get("model"),
+            "input_tokens": log.get("input_tokens"),
+            "output_tokens": log.get("output_tokens"),
+            "total_tokens": log.get("total_tokens"),
+            "cost_usd": log.get("cost_usd"),
+            "confidence": log.get("confidence"),
             "created_at": log["created_at"].isoformat() if isinstance(log["created_at"], datetime) else log["created_at"],
             "completed_at": log["completed_at"].isoformat() if log.get("completed_at") and isinstance(log["completed_at"], datetime) else log.get("completed_at"),
         }
@@ -196,13 +232,13 @@ def _summarize_data(data: Any, max_length: int = 100) -> Optional[str]:
 
 async def get_team_execution_stats(team_id: str) -> Dict[str, Any]:
     """
-    Get execution statistics for a team.
+    Get comprehensive execution statistics for a team including cost, tokens, and quality metrics.
     """
     # Total counts
     total = await execution_logs_collection().count_documents({"team_id": team_id})
     success = await execution_logs_collection().count_documents({"team_id": team_id, "status": "success"})
     errors = await execution_logs_collection().count_documents({"team_id": team_id, "status": "error"})
-    
+
     if total == 0:
         return {
             "total_executions": 0,
@@ -210,31 +246,75 @@ async def get_team_execution_stats(team_id: str) -> Dict[str, Any]:
             "error_count": 0,
             "success_rate": 0,
             "avg_duration_ms": 0,
+            "total_cost_usd": 0.0,
+            "avg_cost_per_execution": 0.0,
+            "total_tokens_used": 0,
+            "avg_confidence": 0.0,
             "engines": {},
         }
-    
-    # Average duration
-    pipeline = [
+
+    # Aggregated statistics: duration, cost, tokens, confidence
+    stats_pipeline = [
         {"$match": {"team_id": team_id}},
-        {"$group": {"_id": None, "avg_duration": {"$avg": "$duration_ms"}}}
+        {
+            "$group": {
+                "_id": None,
+                "avg_duration": {"$avg": "$duration_ms"},
+                "total_cost": {"$sum": "$cost_usd"},
+                "total_input_tokens": {"$sum": "$input_tokens"},
+                "total_output_tokens": {"$sum": "$output_tokens"},
+                "avg_confidence": {"$avg": "$confidence"},
+            }
+        }
     ]
-    avg_result = await execution_logs_collection().aggregate(pipeline).to_list(1)
-    avg_duration = avg_result[0]["avg_duration"] if avg_result else 0
-    
-    # Count by engine
+    stats_result = await execution_logs_collection().aggregate(stats_pipeline).to_list(1)
+    stats = stats_result[0] if stats_result else {}
+
+    avg_duration = stats.get("avg_duration", 0)
+    total_cost = stats.get("total_cost", 0) or 0.0
+    total_input_tokens = stats.get("total_input_tokens", 0) or 0
+    total_output_tokens = stats.get("total_output_tokens", 0) or 0
+    avg_confidence = stats.get("avg_confidence", 0) or 0.0
+
+    # Count and stats by engine
     engine_pipeline = [
         {"$match": {"team_id": team_id}},
-        {"$group": {"_id": "$engine", "count": {"$sum": 1}}}
+        {
+            "$group": {
+                "_id": "$engine",
+                "count": {"$sum": 1},
+                "success_count": {"$sum": {"$cond": [{"$eq": ["$status", "success"]}, 1, 0]}},
+                "total_cost": {"$sum": "$cost_usd"},
+                "avg_duration": {"$avg": "$duration_ms"},
+                "avg_confidence": {"$avg": "$confidence"},
+            }
+        }
     ]
     engine_result = await execution_logs_collection().aggregate(engine_pipeline).to_list(100)
-    engines = {r["_id"]: r["count"] for r in engine_result if r["_id"]}
-    
+    engines = {}
+    for r in engine_result:
+        if r["_id"]:
+            engines[r["_id"]] = {
+                "count": r["count"],
+                "success_count": r["success_count"],
+                "success_rate": round(r["success_count"] / r["count"] * 100, 1) if r["count"] > 0 else 0,
+                "total_cost_usd": round(r["total_cost"] or 0, 3),
+                "avg_duration_ms": round(r["avg_duration"] or 0, 0),
+                "avg_confidence": round(r["avg_confidence"] or 0, 3),
+            }
+
     return {
         "total_executions": total,
         "success_count": success,
         "error_count": errors,
         "success_rate": round(success / total * 100, 1),
         "avg_duration_ms": round(avg_duration or 0, 0),
+        "total_cost_usd": round(total_cost, 3),
+        "avg_cost_per_execution": round((total_cost / total) if total > 0 else 0, 3),
+        "total_tokens_used": total_input_tokens + total_output_tokens,
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "avg_confidence": round(avg_confidence, 3),
         "engines": engines,
     }
 
@@ -256,6 +336,7 @@ async def get_execution_log_detail(team_id: str, log_id: str) -> Optional[Dict[s
         "id": str(log["_id"]),
         "team_id": log["team_id"],
         "user_id": log["user_id"],
+        "execution_id": log.get("execution_id"),
         "engine": log["engine"],
         "pipeline_id": log.get("pipeline_id"),
         "input_data": log.get("input_data"),
@@ -266,6 +347,14 @@ async def get_execution_log_detail(team_id: str, log_id: str) -> Optional[Dict[s
         "duration_ms": log.get("duration_ms", 0),
         "endpoint": log.get("endpoint"),
         "method": log.get("method"),
+        # Instrumentation metrics
+        "provider": log.get("provider"),
+        "model": log.get("model"),
+        "input_tokens": log.get("input_tokens"),
+        "output_tokens": log.get("output_tokens"),
+        "total_tokens": log.get("total_tokens"),
+        "cost_usd": log.get("cost_usd"),
+        "confidence": log.get("confidence"),
         "created_at": log["created_at"].isoformat() if isinstance(log["created_at"], datetime) else log["created_at"],
         "completed_at": log["completed_at"].isoformat() if log.get("completed_at") and isinstance(log["completed_at"], datetime) else log.get("completed_at"),
     }

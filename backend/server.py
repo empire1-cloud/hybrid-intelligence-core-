@@ -52,6 +52,7 @@ from routers.billing import router as billing_router
 from routers.api_keys import router as api_keys_router
 from routers.admin import router as admin_router
 from routers.system import router as system_router
+from routers.execution_analytics import router as execution_analytics_router
 
 from routers.engines import (
     core_router,
@@ -86,6 +87,7 @@ api_router.include_router(api_keys_router)
 api_router.include_router(admin_router)
 api_router.include_router(system_router)
 api_router.include_router(empire_intake_router)
+api_router.include_router(execution_analytics_router)
 
 api_router.include_router(history_protected_router)
 api_router.include_router(pipelines_router)
