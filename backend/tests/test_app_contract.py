@@ -48,6 +48,48 @@ def test_no_double_api_prefix(app):
         f"api_router adds '/api'. Doubled paths: {doubled}"
     )
 
-# A duplicate-route assertion is deliberately not included here yet: `GET
-# /api/health` is already registered twice on main, and failing the build on a
-# pre-existing condition would block unrelated work. Worth fixing separately.
+
+@pytest.mark.parametrize("field", ["model", "force_model"])
+def test_google_models_blocked_at_api_boundary(app, field):
+    """A Google/Gemini override is refused before any engine sees it.
+
+    Most engines still carry a gemini entry in their own MODEL_CONFIG and do not
+    call enforce_approved_model themselves, so this middleware is the boundary
+    that actually holds the policy. It must keep failing closed.
+    """
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/core/execute", json={"goal": "x", field: "gemini-3-flash"}
+    )
+
+    assert response.status_code == 400, (
+        f"a blocked model passed through '{field}' with "
+        f"{response.status_code}; the policy middleware must fail closed"
+    )
+    assert response.json().get("code") == "MODEL_POLICY_BLOCKED"
+
+
+def test_unapproved_model_blocked_at_api_boundary(app):
+    """A model outside the approved stack is refused, not silently rerouted."""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/core/execute", json={"goal": "x", "force_model": "llama-3-70b"}
+    )
+
+    assert response.status_code == 400
+    assert response.json().get("code") == "MODEL_POLICY_UNAPPROVED"
+
+
+# Two assertions are deliberately NOT included here yet, because both fail on
+# pre-existing conditions and failing the build on those would block unrelated
+# work. Both are worth fixing separately:
+#
+#   * duplicate routes -- `GET /api/health` is already registered twice.
+#   * engine-level model policy -- only strategy_engine, router and plan_builder
+#     call enforce_approved_model. Thirteen other engines carry a "gemini" entry
+#     in MODEL_CONFIG with no policy call. Unreachable over HTTP thanks to the
+#     middleware above, but reachable by any in-process caller.
