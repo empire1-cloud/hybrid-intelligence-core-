@@ -75,6 +75,7 @@ from routers.engines import (
 from routers.engines.history_protected import router as history_protected_router
 from routers.pipelines import router as pipelines_router
 from routers.sla113 import router as sla113_router
+from routes.startup_copilot_routes import router as startup_copilot_router
 
 api_router.include_router(auth_router)
 api_router.include_router(teams_router)
@@ -117,6 +118,10 @@ api_router.include_router(analytics_router)
 # SLA113 is Empire-1's deeper tenant, policy, operator, and product-factory layer.
 # It remains commercially distinct without being separated from the Empire-1 parent.
 api_router.include_router(sla113_router)
+
+# Startup Copilot: 12 founder skills for idea validation through scaling
+# Includes chained workflows for multi-skill founder guidance
+api_router.include_router(startup_copilot_router, dependencies=engine_dependencies)
 
 
 class StatusCheck(BaseModel):
