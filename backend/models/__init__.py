@@ -67,6 +67,18 @@ from .auth import (
     AuthResponse,
 )
 
+from .engine_contract import (
+    EngineContract,
+    EngineCategory,
+    ProviderConfig,
+    PerformanceMetrics,
+    QualityMetrics,
+    CanonicalRules,
+    EvidenceState,
+    InputSchema,
+    OutputSchema,
+)
+
 __all__ = [
     # User
     "UserCreate",
@@ -128,4 +140,15 @@ __all__ = [
     "TokenRefresh",
     "TokenResponse",
     "AuthResponse",
+
+    # Engine Contract
+    "EngineContract",
+    "EngineCategory",
+    "ProviderConfig",
+    "PerformanceMetrics",
+    "QualityMetrics",
+    "CanonicalRules",
+    "EvidenceState",
+    "InputSchema",
+    "OutputSchema",
 ]
