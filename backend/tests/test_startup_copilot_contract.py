@@ -153,3 +153,129 @@ def test_router_is_not_double_prefixed():
         f"router prefix {router.prefix!r} is mounted under /api and would resolve to "
         f"/api{router.prefix}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Output handling
+#
+# Engines previously returned hardcoded guidance whenever a model response
+# failed to parse — a founder would see invented unit economics (LTV/CAC 10.0,
+# CAC $1,500) rendered as a completed analysis. They must raise instead.
+# ---------------------------------------------------------------------------
+
+import asyncio  # noqa: E402
+import json  # noqa: E402
+
+from services.startup_copilot_engines import (  # noqa: E402
+    BusinessModelEngine,
+    IdeaValidationEngine,
+    LegalEngine,
+    SkillOutputError,
+)
+
+MALFORMED = [
+    pytest.param('Sure! Here is the analysis:\n\n{"model_pattern": "marketplace"}', id="preamble"),
+    pytest.param('{"model_pattern": "marketplace", "unit_economics": {"ltv": 9000}}', id="wrong-shape"),
+    pytest.param('{"model_pattern": "marketplace", "revenue_streams": [{"name": "take', id="truncated"),
+    pytest.param("", id="empty"),
+]
+
+ENGINE_CALLS = [
+    pytest.param(
+        BusinessModelEngine,
+        "design_model",
+        {"product_description": "x", "target_market": "y"},
+        id="business-model",
+    ),
+    pytest.param(
+        IdeaValidationEngine,
+        "validate",
+        {
+            "founder_background": {"years_experience": 5, "domain": "fintech"},
+            "market_problem": "x",
+        },
+        id="idea-validation",
+    ),
+    pytest.param(
+        LegalEngine,
+        "create_legal_strategy",
+        {
+            "entity_type": "c_corp",
+            "jurisdictions": ["Delaware"],
+            "stage": "seed",
+            "has_employees": False,
+        },
+        id="legal",
+    ),
+]
+
+
+def _model_for(method_name):
+    from routes import startup_copilot_routes as routes  # noqa: WPS433
+
+    return {
+        "design_model": routes.BusinessModelInput,
+        "validate": routes.IdeaValidationInput,
+        "create_legal_strategy": routes.LegalInput,
+    }[method_name]
+
+
+@pytest.mark.parametrize("engine_cls,method,payload", ENGINE_CALLS)
+@pytest.mark.parametrize("response_text", MALFORMED)
+def test_unparseable_response_raises_instead_of_fabricating(
+    engine_cls, method, payload, response_text, monkeypatch
+):
+    async def fake_ask(*_args, **_kwargs):
+        return response_text
+
+    monkeypatch.setattr(engine_cls, "_ask", classmethod(fake_ask))
+    engine = engine_cls()
+    model = _model_for(method)(**payload)
+
+    with pytest.raises(SkillOutputError):
+        asyncio.run(getattr(engine, method)(model))
+
+
+def test_engines_use_no_bare_except():
+    """A bare except also swallows KeyboardInterrupt and masks real failures."""
+    source = (BACKEND / "services/startup_copilot_engines.py").read_text()
+    offenders = [
+        i + 1
+        for i, line in enumerate(source.splitlines())
+        if line.strip() == "except:"
+    ]
+    assert not offenders, f"bare except on lines {offenders}"
+
+
+def test_well_formed_response_is_returned_unchanged(monkeypatch):
+    """The happy path must pass the model's own answer through, not a default."""
+    payload = {
+        "model_pattern": "marketplace",
+        "revenue_streams": [],
+        "unit_economics": {
+            "revenue_per_customer": 5000,
+            "gross_margin_percent": 70,
+            "customer_acquisition_cost": 1500,
+            "lifetime_value": 15000,
+            "ltv_cac_ratio": 10.0,
+            "payback_period_months": 3.6,
+        },
+        "target_segments": ["freelancers"],
+        "pricing_tiers": [],
+        "expansion_opportunities": [],
+        "risks": [],
+    }
+
+    async def fake_ask(*_args, **_kwargs):
+        return json.dumps(payload)
+
+    monkeypatch.setattr(BusinessModelEngine, "_ask", classmethod(fake_ask))
+    from routes.startup_copilot_routes import BusinessModelInput
+
+    result = asyncio.run(
+        BusinessModelEngine().design_model(
+            BusinessModelInput(product_description="x", target_market="y")
+        )
+    )
+    assert result.model_pattern == "marketplace"
+    assert result.target_segments == ["freelancers"]

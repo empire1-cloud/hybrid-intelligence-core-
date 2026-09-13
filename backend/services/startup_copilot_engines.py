@@ -11,6 +11,7 @@ import json
 import asyncio
 from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
+from pydantic import ValidationError
 from services.model_policy import enforce_approved_model
 from .startup_copilot_models import (
     IdeaValidationInput, IdeaValidationOutput,
@@ -28,6 +29,19 @@ from .startup_copilot_models import (
 )
 
 load_dotenv()
+
+
+class SkillOutputError(RuntimeError):
+    """A model response could not be parsed into the skill's output schema.
+
+    Raised instead of returning placeholder guidance: a founder acting on
+    invented unit economics is worse off than one shown an error.
+    """
+
+    def __init__(self, message: str, response_text: str = ""):
+        snippet = (response_text or "").strip()[:500]
+        super().__init__(f"{message}. Model returned: {snippet!r}" if snippet else message)
+        self.response_text = response_text
 
 
 class StartupCopilotEngine:
@@ -164,16 +178,11 @@ Format your response as JSON matching the IdeaValidationOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return IdeaValidationOutput(**result_json)
-        except (json.JSONDecodeError, ValueError) as e:
-            # Fallback if LLM output isn't perfectly formatted
-            return IdeaValidationOutput(
-                verdict="pivot",
-                confidence=0.5,
-                findings=[],
-                summary=response_text,
-                next_steps=["Conduct more customer interviews"],
-                founder_market_fit_score=5.0
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "IdeaValidationOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class BusinessModelEngine(StartupCopilotEngine):
@@ -241,23 +250,11 @@ Format response as JSON matching BusinessModelOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return BusinessModelOutput(**result_json)
-        except:
-            return BusinessModelOutput(
-                model_pattern="saas_subscription",
-                revenue_streams=[],
-                unit_economics={
-                    "revenue_per_customer": 5000,
-                    "gross_margin_percent": 70,
-                    "customer_acquisition_cost": 1500,
-                    "lifetime_value": 15000,
-                    "ltv_cac_ratio": 10.0,
-                    "payback_period_months": 3.6
-                },
-                target_segments=["SMB"],
-                pricing_tiers=[],
-                expansion_opportunities=[],
-                risks=[]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "BusinessModelOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class FundraisingEngine(StartupCopilotEngine):
@@ -316,21 +313,11 @@ Format response as JSON matching FundraisingOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return FundraisingOutput(**result_json)
-        except:
-            return FundraisingOutput(
-                pitch_deck=[],
-                investor_targets=[],
-                investor_count=100,
-                vc_outreach_sequence=[
-                    "Email 1: Problem hook - why this matters",
-                    "Wait 3 days",
-                    "Email 2: Social proof + case study",
-                    "Wait 5 days",
-                    "Email 3: Direct ask + calendar link"
-                ],
-                estimated_timeline_weeks=8,
-                key_narrative_hooks=[]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "FundraisingOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class GTMEngine(StartupCopilotEngine):
@@ -379,17 +366,11 @@ Format response as JSON matching GTMOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return GTMOutput(**result_json)
-        except:
-            return GTMOutput(
-                recommended_motion="hybrid",
-                channels=[],
-                phase_1_days=30,
-                phase_2_days=30,
-                phase_3_days=30,
-                waitlist_target=1000,
-                launch_date_recommendation="Q4 2026",
-                key_messaging=[]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "GTMOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class ProductEngine(StartupCopilotEngine):
@@ -436,15 +417,11 @@ Format response as JSON matching ProductOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return ProductOutput(**result_json)
-        except:
-            return ProductOutput(
-                prd_sections={},
-                user_stories=[],
-                roadmap_phases=[],
-                rice_scores={},
-                top_3_priorities=[],
-                non_goals=[]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "ProductOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class SalesEngine(StartupCopilotEngine):
@@ -491,15 +468,11 @@ Format response as JSON matching SalesOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return SalesOutput(**result_json)
-        except:
-            return SalesOutput(
-                recommended_methodology="BANT",
-                qualification_criteria=[],
-                cold_email_sequences=[],
-                target_response_rate=0.02,
-                target_conversion_rate=0.005,
-                pipeline_target=0.0
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "SalesOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class MarketingEngine(StartupCopilotEngine):
@@ -542,15 +515,11 @@ Format response as JSON matching MarketingOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return MarketingOutput(**result_json)
-        except:
-            return MarketingOutput(
-                brand_voice_attributes=[],
-                content_pillars=[],
-                target_keywords=[],
-                monthly_content_plan=[],
-                pr_angles=[],
-                social_strategy={}
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "MarketingOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class GrowthEngine(StartupCopilotEngine):
@@ -599,14 +568,11 @@ Format response as JSON matching GrowthOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return GrowthOutput(**result_json)
-        except:
-            return GrowthOutput(
-                north_star_metric="Daily Active Users",
-                aarrr_metrics=[],
-                retention_curve_target={},
-                recommended_experiments=[],
-                growth_initiatives=[]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "GrowthOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class OperationsEngine(StartupCopilotEngine):
@@ -654,13 +620,11 @@ Format response as JSON matching OperationsOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return OperationsOutput(**result_json)
-        except:
-            return OperationsOutput(
-                hiring_plan=[],
-                interview_scorecard={},
-                okrs=[],
-                board_composition_recommendation="2 founders + 1 independent"
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "OperationsOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class FinanceEngine(StartupCopilotEngine):
@@ -704,15 +668,11 @@ Format response as JSON matching FinanceOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return FinanceOutput(**result_json)
-        except:
-            return FinanceOutput(
-                cash_flow_projection=[],
-                monthly_burn_rate=input_data.monthly_burn_rate,
-                projected_runway_months=input_data.current_cash / input_data.monthly_burn_rate if input_data.monthly_burn_rate > 0 else 0,
-                unit_economics_monthly=None,
-                cash_reserve_recommendation=input_data.monthly_burn_rate * 6,
-                next_fundraising_deadline=None
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "FinanceOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class CustomerSuccessEngine(StartupCopilotEngine):
@@ -758,16 +718,11 @@ Format response as JSON matching HealthScoreOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return HealthScoreOutput(**result_json)
-        except:
-            return HealthScoreOutput(
-                onboarding_milestones=[],
-                health_score_formula="(usage*0.4) + (sentiment*0.3) + (engagement*0.3)",
-                red_zone_criteria=[],
-                yellow_zone_criteria=[],
-                green_zone_criteria=[],
-                nps_target=40,
-                churn_prevention_tactics=[]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "HealthScoreOutput could not be built from the model response",
+                response_text,
+            ) from exc
 
 
 class LegalEngine(StartupCopilotEngine):
@@ -821,28 +776,8 @@ Format response as JSON matching LegalOutput schema.
         try:
             result_json = json.loads(self._strip_fences(response_text))
             return LegalOutput(**result_json)
-        except:
-            return LegalOutput(
-                recommended_entity="C-Corp",
-                cap_table_template=[],
-                key_documents_checklist=[
-                    "Articles of Incorporation",
-                    "Operating Agreement",
-                    "IP Assignment Agreements",
-                    "Founder Agreements (with vesting)",
-                    "Section 83(b) elections"
-                ],
-                compliance_checklist=[
-                    "EIN from IRS",
-                    "Corporate bylaws filed",
-                    "Quarterly filings (if Delaware)",
-                    "Annual tax returns",
-                    "Estimated quarterly payments"
-                ],
-                vesting_recommendation="4-year vest with 1-year cliff",
-                tax_optimization_tips=[
-                    "Claim R&D tax credit",
-                    "Document W-2 reasonable salary",
-                    "Consider S-Corp election if profitable"
-                ]
-            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise SkillOutputError(
+                "LegalOutput could not be built from the model response",
+                response_text,
+            ) from exc
