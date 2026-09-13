@@ -52,6 +52,7 @@ from routers.billing import router as billing_router
 from routers.api_keys import router as api_keys_router
 from routers.admin import router as admin_router
 from routers.system import router as system_router
+from routers.execution_analytics import router as execution_analytics_router
 
 from routers.engines import (
     core_router,
@@ -71,6 +72,7 @@ from routers.engines import (
     art_direction_router,
     money_pipeline_router,
     analytics_router,
+    discovery_router,
 )
 from routers.engines.history_protected import router as history_protected_router
 from routers.pipelines import router as pipelines_router
@@ -86,6 +88,7 @@ api_router.include_router(api_keys_router)
 api_router.include_router(admin_router)
 api_router.include_router(system_router)
 api_router.include_router(empire_intake_router)
+api_router.include_router(execution_analytics_router)
 
 api_router.include_router(history_protected_router)
 api_router.include_router(pipelines_router)
@@ -114,6 +117,10 @@ api_router.include_router(money_pipeline_router, dependencies=engine_dependencie
 # Existing analytics transport remains read-only/public in this release so its
 # polling and WebSocket dashboard are not broken by the execution gate.
 api_router.include_router(analytics_router)
+
+# Engine Discovery (read-only, public) — No subscription required
+# Exposes engine contracts, orchestration metadata, and system information
+api_router.include_router(discovery_router)
 
 # SLA113 is Empire-1's deeper tenant, policy, operator, and product-factory layer.
 # It remains commercially distinct without being separated from the Empire-1 parent.

@@ -82,6 +82,13 @@ class ExecutionLogCreate(BaseModel):
     pipeline_id: Optional[str] = None
     input_data: Dict[str, Any] = {}
     source: str = "direct"  # direct, pipeline, api
+    # Metrics for instrumentation
+    provider: Optional[str] = None  # anthropic, openai, etc.
+    model: Optional[str] = None  # claude-opus-5, gpt-4, etc.
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
 
 
 class ExecutionLogInDB(BaseModel):
@@ -89,6 +96,7 @@ class ExecutionLogInDB(BaseModel):
     id: str = Field(alias="_id")
     team_id: str
     user_id: str
+    execution_id: Optional[str] = None  # Unique execution ID
     engine: str
     pipeline_id: Optional[str] = None
     input_data: Dict[str, Any] = {}
@@ -97,9 +105,17 @@ class ExecutionLogInDB(BaseModel):
     status: ExecutionStatus = "pending"
     source: str = "direct"
     duration_ms: int = 0
+    # Instrumentation metrics
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
+    confidence: Optional[float] = None  # Quality score 0-1
     created_at: datetime
     completed_at: Optional[datetime] = None
-    
+
     class Config:
         populate_by_name = True
         json_encoders = {ObjectId: str}
@@ -111,6 +127,7 @@ class ExecutionLogResponse(BaseModel):
     team_id: str
     user_id: str
     user_email: Optional[str] = None
+    execution_id: Optional[str] = None
     engine: str
     pipeline_id: Optional[str] = None
     pipeline_name: Optional[str] = None
@@ -120,6 +137,14 @@ class ExecutionLogResponse(BaseModel):
     status: ExecutionStatus
     source: str
     duration_ms: int
+    # Instrumentation metrics
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
+    confidence: Optional[float] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 

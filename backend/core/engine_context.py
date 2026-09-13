@@ -170,6 +170,54 @@ async def enforce_engine_subscription(
     return context
 
 
+def extract_execution_metrics(output_data: Optional[dict]) -> dict:
+    """Pull provider/model/token/cost/confidence off an engine result.
+
+    Engines report these under `metadata`; a bare top-level key is accepted as a
+    fallback. Anything missing or malformed stays None so the execution still
+    logs rather than failing on its own instrumentation.
+    """
+    metrics = {
+        "provider": None,
+        "model": None,
+        "input_tokens": None,
+        "output_tokens": None,
+        "cost_usd": None,
+        "confidence": None,
+    }
+    if not isinstance(output_data, dict):
+        return metrics
+
+    metadata = output_data.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+
+    for key in metrics:
+        value = metadata.get(key, output_data.get(key))
+        if value is None:
+            continue
+        if key in ("input_tokens", "output_tokens"):
+            try:
+                metrics[key] = int(value)
+            except (TypeError, ValueError):
+                continue
+        elif key == "confidence":
+            try:
+                confidence = float(value)
+            except (TypeError, ValueError):
+                continue
+            if 0.0 <= confidence <= 1.0:
+                metrics[key] = confidence
+        elif key == "cost_usd":
+            try:
+                metrics[key] = float(value)
+            except (TypeError, ValueError):
+                continue
+        else:
+            metrics[key] = str(value)
+
+    return metrics
+
+
 async def log_engine_call(
     ctx: EngineContext,
     engine: str,
@@ -180,7 +228,9 @@ async def log_engine_call(
     source: str = "api",
     pipeline_id: Optional[str] = None,
 ):
-    """Log an engine execution with team and actor context."""
+    """Log an engine execution with team, actor, and instrumentation context."""
+    metrics = extract_execution_metrics(output_data)
+
     await log_execution(
         team_id=ctx.team_id,
         user_id=ctx.user_id,
@@ -193,6 +243,7 @@ async def log_engine_call(
         pipeline_id=pipeline_id,
         endpoint=str(ctx.request.url.path),
         method=ctx.request.method,
+        **metrics,
     )
 
 
