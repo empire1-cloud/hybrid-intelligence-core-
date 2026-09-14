@@ -103,7 +103,10 @@ jobs:
           python-version: '3.11'
 
       - name: Resolve requirements.txt without installing
-        run: python -m pip install --dry-run -q -r requirements.txt
+        # Deliberately not -q: on success the log should show what was
+        # resolved. A check whose passing log is empty is hard to audit, and
+        # this repo has already shipped one green check that proved nothing.
+        run: python -m pip install --dry-run -r requirements.txt
 
   frontend-build:
     runs-on: ubuntu-latest
