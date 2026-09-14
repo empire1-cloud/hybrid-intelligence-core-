@@ -78,6 +78,33 @@ jobs:
       - name: Run Startup Copilot contract tests
         run: python -m pytest -q tests/test_startup_copilot_contract.py
 
+  requirements-resolve:
+    # requirements.txt was unresolvable for a long time: it pinned
+    # emergentintegrations (not on PyPI) and ALSO pinned litellm by direct URL,
+    # which the transitive requirement already pinned without a #sha256=
+    # fragment -- two direct-URL requirements for one package only resolve when
+    # the URL strings match byte-for-byte. `deploy.sh` runs `set -e`, so a
+    # deploy from main died at that install step.
+    #
+    # This job proves the file still resolves. It downloads nothing and takes
+    # about 10 seconds. Both regressions have been confirmed to fail it:
+    # dropping the direct-URL pin, and re-adding the litellm line.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve requirements.txt without installing
+        run: python -m pip install --dry-run -q -r requirements.txt
+
   frontend-build:
     runs-on: ubuntu-latest
     defaults:

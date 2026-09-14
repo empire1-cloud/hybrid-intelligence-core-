@@ -163,12 +163,21 @@ cd frontend && npm install && npm run build     # craco
 
 Two things to know before touching the workflow:
 
-- **`requirements.txt` does not resolve.** `emergentintegrations==0.1.1` is not on PyPI
-  and conflicts with the pinned `litellm` wheel; `pip install -r requirements.txt` fails
-  even with the extra index that `deployment/deploy.sh` uses. CI therefore installs a
-  pinned subset of what the app actually imports, and supplies `emergentintegrations`
-  from the vendored `backend/emergentintegrations_local_backup/` drop-in copy. Keep that
-  list in sync when adding a third-party import.
+- **`requirements.txt` resolves — keep it that way.** It did not for a long time, for
+  two separate reasons, and both are one edit away from coming back:
+  1. `emergentintegrations==0.1.1` is not on PyPI. It is now pinned by **direct URL**,
+     so `pip install -r requirements.txt` needs no `--extra-index-url`.
+  2. `litellm` was *also* pinned by direct URL, with a `#sha256=` fragment. The
+     transitive requirement from `emergentintegrations` pins the same wheel **without**
+     that fragment, and pip only reconciles two direct-URL requirements for one package
+     when the URL strings match byte-for-byte — so it failed `ResolutionImpossible`.
+     That line is gone. **Do not re-add a `litellm` pin.**
+  `requirements-resolve` in CI guards this with `pip install --dry-run`; it takes ~10s
+  and has been confirmed to fail on both regressions.
+- **`backend-contract` still installs a pinned subset**, plus `emergentintegrations` from
+  the vendored `backend/emergentintegrations_local_backup/` copy, because that is much
+  faster than the full tree and keeps the job hermetic. Keep that list in sync when
+  adding a third-party import. The full set is exercised by `requirements-resolve`.
 - A green `backend-contract` proves the app **starts** and the routes are wired. It does
   not prove any engine produces good output, and it makes no live LLM call.
 
@@ -178,7 +187,6 @@ Two things to know before touching the workflow:
 
 - `GET /api/health` is registered twice; the second registration shadows the first.
 - Thirteen engines carry a `gemini` entry with no `enforce_approved_model` call (see §1).
-- `requirements.txt` is unresolvable, so `deployment/deploy.sh` would fail as written.
 - `backend_test.py` asserts that forcing `gemini-3-flash` *works*, which contradicts the
   policy the middleware enforces.
 
