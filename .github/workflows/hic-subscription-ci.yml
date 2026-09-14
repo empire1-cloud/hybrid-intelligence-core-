@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m compileall -q \
             -x '(^|/)(archived|__pycache__|emergentintegrations_local_backup)/' \
-            core database middleware models routers services sla113 server.py
+            core database middleware models routers routes services sla113 server.py
 
       - name: Install import-check dependencies
         # The full requirements.txt cannot resolve (emergentintegrations 0.1.1
@@ -74,6 +74,9 @@ jobs:
 
       - name: Run model policy unit tests
         run: python -m pytest -q tests/test_model_policy.py
+
+      - name: Run Startup Copilot contract tests
+        run: python -m pytest -q tests/test_startup_copilot_contract.py
 
   frontend-build:
     runs-on: ubuntu-latest

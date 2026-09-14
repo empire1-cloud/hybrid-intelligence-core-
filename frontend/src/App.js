@@ -23,6 +23,7 @@ import AdminOverviewPage from "./pages/AdminOverviewPage";
 import EnginesPage from "./pages/EnginesPage";
 import MoneyPipelinePage from "./pages/MoneyPipelinePage";
 import PipelineComposerPage from "./pages/PipelineComposerPage";
+import FounderCopilotPage from "./pages/FounderCopilotPage";
 import ExecutionHistoryPage from "./pages/ExecutionHistoryPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import LicensingPage from "./pages/LicensingPage";
@@ -77,6 +78,7 @@ function RootRouter() {
             <Route path="/engines" element={<ProtectedRoute><EnginesPage /></ProtectedRoute>} />
             <Route path="/money-pipeline" element={<ProtectedRoute><MoneyPipelinePage /></ProtectedRoute>} />
             <Route path="/pipeline-composer" element={<ProtectedRoute><PipelineComposerPage /></ProtectedRoute>} />
+            <Route path="/founder-copilot" element={<ProtectedRoute><FounderCopilotPage /></ProtectedRoute>} />
             <Route path="/history" element={<ProtectedRoute><ExecutionHistoryPage /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
