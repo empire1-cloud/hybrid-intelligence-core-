@@ -1,0 +1,12 @@
+/* Additive patch for the logged-out header only.
+   The two new "Product"/"Pricing" links added for the /welcome landing page
+   would otherwise crowd the existing two-item mobile layout that
+   Sign In / Get Started already relied on. Hide them below 640px so the
+   original mobile header behavior is preserved exactly; they're still one
+   tap away via the logo, which now links to /welcome. */
+@media (max-width: 640px) {
+  .app-header [data-testid="product-nav"],
+  .app-header [data-testid="pricing-nav"] {
+    display: none;
+  }
+}

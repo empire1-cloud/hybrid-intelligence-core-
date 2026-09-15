@@ -8,6 +8,7 @@ import SettingsSidebar from "./components/SettingsSidebar";
 import { Toaster } from "./components/ui/sonner";
 
 // Empire 1 Pages
+import LandingPage from "./pages/LandingPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
@@ -66,6 +67,7 @@ function RootRouter() {
         <main className="app-main">
           <Routes>
             {/* Public */}
+            <Route path="/welcome" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
