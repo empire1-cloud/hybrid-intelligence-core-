@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import TeamSwitcher from "./TeamSwitcher";
+import "../styles/HeaderPatch.css";
 
 const EmpireMark = () => (
   <svg
@@ -65,7 +66,7 @@ const AppHeader = () => {
   if (!isAuthenticated) {
     return (
       <header className="app-header" data-testid="app-header">
-        <Link to="/" className="app-logo">
+        <Link to="/welcome" className="app-logo">
           <span className="logo-icon">
             <EmpireMark />
           </span>
@@ -74,6 +75,12 @@ const AppHeader = () => {
           </span>
         </Link>
         <nav className="header-nav">
+          <Link to="/welcome" className="nav-link" data-testid="product-nav">
+            Product
+          </Link>
+          <Link to="/welcome#pricing" className="nav-link" data-testid="pricing-nav">
+            Pricing
+          </Link>
           <Link to="/login" className="nav-link" data-testid="login-nav">
             Sign In
           </Link>
