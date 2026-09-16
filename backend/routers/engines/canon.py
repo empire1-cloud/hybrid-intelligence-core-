@@ -23,7 +23,7 @@ from services.canon_run_service import (
     get_team_canon_runs,
     save_canon_run,
 )
-from services.hybrid_core import TaskType
+from services.canon_routing import CANON_ENGINE_KEYS
 from services.model_policy import APPROVED_MODELS
 from services.tri_model_execution import default_fallback_chain
 
@@ -58,17 +58,10 @@ async def canon_execute(
     ctx.require_write()
     orchestrator = get_canonical_orchestrator()
 
-    task_type = None
-    if payload.task_type:
-        try:
-            task_type = TaskType(payload.task_type)
-        except ValueError:
-            pass
-
     async with EngineExecutor(ctx, engine="canon_orchestrator", input_data=payload.model_dump()) as ex:
         result = await orchestrator.execute(
             prompt=payload.prompt,
-            task_type=task_type,
+            task_type=payload.task_type,
             context=payload.context,
             force_model=payload.force_model,
         )
@@ -142,6 +135,11 @@ async def canon_status(ctx: EngineContext = Depends(get_engine_context)):
     return {
         "contract": ["core_insight", "system_blueprint", "leverage_point", "executable_output"],
         "layers": ["ontology", "system", "mechanics", "outputs"],
+        "wired_engines": sorted(CANON_ENGINE_KEYS),
+        "not_yet_wired": [
+            "blueprint", "anime_character", "anime_lore", "anime_story",
+            "art_direction", "money_pipeline", "pipeline_composer",
+        ],
         "approved_models": sorted(APPROVED_MODELS),
         "default_fallback_chain": default_fallback_chain("gpt-5.2"),
         "founding_canon_model_target": ["gpt-5.2", "claude-sonnet-4.5", "gemini-3-flash"],

@@ -11,6 +11,7 @@ import asyncio
 from typing import Optional, Dict, Any
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from services.engine_errors import EngineOutputError
 from services.model_policy import enforce_approved_model
 
 
@@ -106,13 +107,10 @@ Return ONLY the JSON object. No other text."""
 
             return json.loads(response_text)
         except json.JSONDecodeError:
-            return {
-                "summary": response[:500] if isinstance(response, str) else str(response)[:500],
-                "steps": ["Review the generated content and extract actionable steps"],
-                "risks": ["Response was not in expected JSON format"],
-                "resources": [],
-                "next_action": "Retry with a more specific goal"
-            }
+            raise EngineOutputError(
+                "Strategy Engine returned output that did not parse as JSON.",
+                response_text=response if isinstance(response, str) else str(response),
+            )
 
     @classmethod
     def generate(

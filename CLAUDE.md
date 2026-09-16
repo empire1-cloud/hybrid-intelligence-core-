@@ -176,23 +176,36 @@ Two things to know before touching the workflow:
 
 ## Known gaps (verified, not yet fixed)
 
-- `GET /api/health` is registered **three** times, not twice as previously noted here:
-  `routers/system.py` (included first, so it wins), `routers/engines/core.py`, and
-  `server.py` itself. The second and third are permanently shadowed dead routes.
 - Thirteen engines carry a `gemini` entry with no `enforce_approved_model` call (see §1).
-  Still true after the Canon Contract pass below — those engine files were not touched.
+  Still true after both Canon Contract passes below — those engine files' model-selection
+  code was not touched. (Three of the thirteen — `strategy_engine.py`, `plan_builder.py`,
+  `analysis_engine.py` — did get touched in pass 2, but only their JSON-parse-failure
+  handling; their `MODEL_CONFIG`/policy-enforcement gap is untouched.)
 - `requirements.txt` is unresolvable, so `deployment/deploy.sh` would fail as written.
 - `backend_test.py` asserts that forcing `gemini-3-flash` *works*, which contradicts the
   policy the middleware enforces.
-- `strategy_engine.py`, `plan_builder.py` and `analysis_engine.py` each still fabricate a
-  hardcoded placeholder response on `JSONDecodeError` instead of raising, the same class of
-  bug `startup_copilot_engines.py::SkillOutputError` already fixed for the 12 founder
-  skills. Not fixed here either — `services/canon_contract.py` detects and refuses to
-  canonize that specific fallback shape instead, without editing the three engine files.
 - `services/hybrid_core.py::HybridIntelligenceCore.execute()` only ever calls
   `StrategyEngine` or `PlanBuilderEngine`; its own `ENGINE_MAP` dict is declared and never
-  read anywhere. Left as-is (existing `/core/*` behavior is not to be changed); the new
-  `/canon/*` path below dispatches for real instead.
+  read anywhere. Left as-is (existing `/core/*` behavior is not to be changed) in both
+  passes; `/canon/*` dispatches to 8 engines for real instead — see pass 2 below.
+- Opportunity Mapper, Evaluator, Pricing and Persona (newly wired into `/canon/*` in pass 2)
+  still fabricate a hardcoded placeholder on `JSONDecodeError`, the same bug class fixed in
+  Strategy/Plan/Analysis in pass 2. `services/canon_contract.py` detects and refuses to
+  canonize their specific fallback shapes, same as pass 1 did for the original three before
+  they were fixed at the source. Not fixed at the source for these four — next pass.
+- Blueprint Engine, the anime/art-direction content engines, Money Pipeline, Pipeline
+  Composer, and the 12 Startup Copilot skills (a separate product surface) are still not
+  reachable from either orchestrator. 8 of ~19 engines are genuinely dispatched by task type
+  as of pass 2 (`/canon/*` only) — see `services/canon_routing.py` for the exact list.
+
+**Correction (pass 2):** pass 1's note here previously said `GET /api/health` was
+registered three times. Re-verified against the actual live route table
+(`app.routes`, not grep) rather than trusting that count: it was genuinely registered
+twice (`routers/engines/core.py` and `server.py`) — the third grep hit was
+`routers/system.py`, whose router carries its own `/system` prefix, so its `/health`
+lives at the distinct path `/api/system/health` and was never actually colliding. Fixed
+in pass 2 — see below. Flagging the correction itself: this file's own working-style rule
+is to say what's verified, and the "three times" claim wasn't.
 
 ---
 
@@ -237,8 +250,57 @@ Tests: `tests/test_canon_contract.py`, `tests/test_tri_model_execution.py`,
 as the rest of this file's test commands, with the same `emergentintegrations` shim.
 
 Not done in this pass, left for the next one: the 13 engines' unenforced `gemini` entries,
-the triple `/health` registration, `requirements.txt` resolution, and actually fixing (not
+the duplicate `/health` registration, `requirements.txt` resolution, and actually fixing (not
 just detecting) the three engines' fabrication-on-parse-failure fallback.
+
+---
+
+## Canon Contract layer, pass 2 — more engines, the source-level honesty fix, `/health` dedupe
+
+Three things from pass 1's "not done" list, done in pass 2. `/core/*` is still completely
+untouched by this pass too.
+
+**1. Four more engines wired into `/canon/*`.** `services/canon_orchestrator.py` reached
+Strategy, Plan Builder and Analysis in pass 1. It now also reaches Opportunity Mapper,
+Evaluator, Pricing and Persona — 8 of ~19 engines genuinely dispatched by task type. New
+module `services/canon_routing.py` replaces pass 1's reliance on
+`services.hybrid_core.TaskType` (6 narrow categories) with a wider, regex-scored classifier
+over `CANON_ENGINE_KEYS`; `canon_orchestrator.py` no longer imports `hybrid_core` at all.
+`POST /canon/execute`'s `task_type` field still accepts every value it did before (the old
+TaskType values were already lowercase strings matching their `.value`, e.g. `"analysis"`;
+`"code"`/`"quick"`/`"general"` still resolve, now via a default-to-strategy fallback instead
+of an enum member) — this is additive at the API level, not a breaking change. Still not
+wired: Blueprint, the anime/art-direction engines, Money Pipeline, Pipeline Composer, the 12
+Startup Copilot skills.
+
+**2. The fabrication-on-parse-failure bug is actually fixed, at the source, in three
+engines.** `strategy_engine.py`, `plan_builder.py`, `analysis_engine.py` no longer return a
+hardcoded placeholder dict when the model's response doesn't parse as JSON — each now raises
+`services/engine_errors.py::EngineOutputError` (mirrors the already-proven
+`startup_copilot_engines.py::SkillOutputError` pattern exactly). Checked every existing
+caller before making this change: `routers/engines/strategy.py`, `plan.py`, `analysis.py`,
+and `services/hybrid_core.py::execute()` all already wrap their engine call in
+`try/except Exception -> a structured error response`, so this raise is caught everywhere it
+already ran — no unhandled failure anywhere, `/core/execute` included. A parse failure now
+correctly reports `success: false` there too, instead of silently returning fabricated
+content as a success. `services/canon_contract.py`'s marker-detection for these three engines
+is kept as defense-in-depth (belt-and-suspenders — WE EVOLVE, NEVER DELETE), though it should
+no longer trigger for them in practice; it's still load-bearing for the four newly-wired
+engines above, which were **not** fixed at the source in this pass.
+
+**3. `GET /api/health` duplicate removed.** See the correction above — it was genuinely
+registered twice. `server.py`'s copy is deleted; `routers/engines/core.py`'s copy (the one
+that was actually live) gained the fields the deleted one had (`parent`, `product`,
+`version`, `timestamp`), so nothing either version promised is lost. Verified against the
+live route table, and `test_app_contract.py` now asserts exactly one `GET /api/health`
+handler (this was one of the two assertions that file's own comment had explicitly deferred
+as "worth fixing separately").
+
+Tests: `tests/test_canon_routing.py`, `tests/test_engine_output_honesty.py` (the source-level
+proof for item 2 — only `_create_chat` is patched per engine, not the whole method, so the
+engine's real JSON-parsing logic runs), plus new cases in `tests/test_canon_orchestrator.py`
+for the four newly-wired engines. `test_app_contract.py` gained
+`test_no_duplicate_health_route`.
 
 ---
 
