@@ -84,11 +84,27 @@ def test_unapproved_model_blocked_at_api_boundary(app):
     assert response.json().get("code") == "MODEL_POLICY_UNAPPROVED"
 
 
-# Two assertions are deliberately NOT included here yet, because both fail on
-# pre-existing conditions and failing the build on those would block unrelated
-# work. Both are worth fixing separately:
+def test_no_duplicate_health_route(app):
+    """`GET /api/health` must resolve to exactly one handler.
+
+    This was the first of the two gaps this file used to defer (see below):
+    `server.py` and `routers/engines/core.py` both registered a handler at
+    this path; Starlette's first-registered-wins routing made one of them
+    permanently unreachable. Fixed by removing the duplicate in `server.py`
+    and folding its fields into the surviving handler in `core.py`.
+    """
+    matches = [
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/health" and "GET" in (getattr(route, "methods", None) or [])
+    ]
+    assert len(matches) == 1, f"expected exactly one GET /api/health handler, found {len(matches)}"
+
+
+# One assertion is deliberately NOT included here yet, because it fails on a
+# pre-existing condition and failing the build on it would block unrelated
+# work. Worth fixing separately:
 #
-#   * duplicate routes -- `GET /api/health` is already registered twice.
 #   * engine-level model policy -- only strategy_engine, router and plan_builder
 #     call enforce_approved_model. Thirteen other engines carry a "gemini" entry
 #     in MODEL_CONFIG with no policy call. Unreachable over HTTP thanks to the

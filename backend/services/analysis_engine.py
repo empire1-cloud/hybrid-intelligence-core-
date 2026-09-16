@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
 
+from services.engine_errors import EngineOutputError
+
 load_dotenv()
 
 
@@ -132,16 +134,10 @@ Return ONLY the JSON object. No other text."""
             
             return json.loads(response)
         except json.JSONDecodeError:
-            # Return structured fallback
-            return {
-                "overview": f"Analysis of: {subject}",
-                "strengths": ["Unable to parse structured analysis"],
-                "weaknesses": ["Response format error"],
-                "opportunities": ["Retry with more specific subject"],
-                "threats": ["Incomplete analysis"],
-                "key_insights": [response[:500] if response else "No response received"],
-                "recommended_focus": "Retry the analysis with clearer parameters"
-            }
+            raise EngineOutputError(
+                "Analysis Engine returned output that did not parse as JSON.",
+                response_text=response if isinstance(response, str) else str(response),
+            )
     
     @classmethod
     def analyze(

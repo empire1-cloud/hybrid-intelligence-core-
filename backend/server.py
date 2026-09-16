@@ -160,17 +160,6 @@ async def root():
     }
 
 
-@api_router.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "parent": "Empire-1",
-        "product": "Hybrid Intelligence Core",
-        "version": "2.2.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
     db = get_database()

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
 
+from services.engine_errors import EngineOutputError
 from services.model_policy import enforce_approved_model
 
 
@@ -138,26 +139,10 @@ Return ONLY the JSON object. No other text."""
 
             return json.loads(response)
         except json.JSONDecodeError:
-            return {
-                "objective": goal,
-                "phases": [
-                    {
-                        "name": "Initial Phase",
-                        "duration": "TBD",
-                        "tasks": [
-                            {
-                                "task": "Review and refine plan",
-                                "steps": ["Parse response", "Extract actionable items"],
-                                "owner": "Operator",
-                                "dependencies": []
-                            }
-                        ]
-                    }
-                ],
-                "milestones": ["Plan refinement complete"],
-                "critical_path": ["Manual review required"],
-                "first_24_hours": ["Retry with more specific goal"]
-            }
+            raise EngineOutputError(
+                "Plan Builder Engine returned output that did not parse as JSON.",
+                response_text=response if isinstance(response, str) else str(response),
+            )
 
     @classmethod
     def build_plan(
