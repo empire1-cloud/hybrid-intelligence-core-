@@ -176,11 +176,69 @@ Two things to know before touching the workflow:
 
 ## Known gaps (verified, not yet fixed)
 
-- `GET /api/health` is registered twice; the second registration shadows the first.
+- `GET /api/health` is registered **three** times, not twice as previously noted here:
+  `routers/system.py` (included first, so it wins), `routers/engines/core.py`, and
+  `server.py` itself. The second and third are permanently shadowed dead routes.
 - Thirteen engines carry a `gemini` entry with no `enforce_approved_model` call (see §1).
+  Still true after the Canon Contract pass below — those engine files were not touched.
 - `requirements.txt` is unresolvable, so `deployment/deploy.sh` would fail as written.
 - `backend_test.py` asserts that forcing `gemini-3-flash` *works*, which contradicts the
   policy the middleware enforces.
+- `strategy_engine.py`, `plan_builder.py` and `analysis_engine.py` each still fabricate a
+  hardcoded placeholder response on `JSONDecodeError` instead of raising, the same class of
+  bug `startup_copilot_engines.py::SkillOutputError` already fixed for the 12 founder
+  skills. Not fixed here either — `services/canon_contract.py` detects and refuses to
+  canonize that specific fallback shape instead, without editing the three engine files.
+- `services/hybrid_core.py::HybridIntelligenceCore.execute()` only ever calls
+  `StrategyEngine` or `PlanBuilderEngine`; its own `ENGINE_MAP` dict is declared and never
+  read anywhere. Left as-is (existing `/core/*` behavior is not to be changed); the new
+  `/canon/*` path below dispatches for real instead.
+
+---
+
+## Canon Contract layer (`/canon/*`) — additive, alongside `/core/*`
+
+Founding canon defines a four-part output contract — Core Insight → System Blueprint →
+Leverage Point → Executable Output — and a hybrid tri-model stack (GPT-5.2 + Claude
+Sonnet 4.5 + Gemini 3 Flash) run with parallel calls and fallbacks. Before this pass,
+**neither existed anywhere in this codebase** — verified by `git log --all -S` across
+every local and remote branch for `CORE_INSIGHT_PROMPT`, `class SystemOutput`,
+`GeneratedComponent`, `SystemMeta`: zero hits, ever. `CanonEnforcer`'s "canon" is a
+different thing — tone/phrase hygiene plus Strategy Engine's own 5-field shape — not the
+founding four-part contract.
+
+What's new, all additive, `/core/*` untouched:
+
+- `models/canon_contract.py`, `services/canon_contract.py` — `FourPartOutput` and
+  `FourPartContractMapper`, mapping Strategy/Plan/Analysis output onto the four-part
+  contract. Refuses (raises `CanonContractError`) rather than canonizes a detected
+  parse-failure fallback from those three engines.
+- `services/tri_model_execution.py` — real fallback (`run_with_fallback`) and real
+  concurrent dispatch (`run_in_parallel`) across `services.model_policy.APPROVED_MODELS`.
+  **Honest naming note:** Gemini is blocked by the live, tested model policy, so this is
+  dual-model (GPT-5.2 / Claude Sonnet 4.5) today, not literally tri-model. It reads
+  `APPROVED_MODELS` at call time rather than hardcoding a count, so it becomes tri-model
+  automatically if policy ever admits a third approved provider — nothing here special-cases
+  Gemini back in.
+- `services/canon_orchestrator.py` — `CanonicalOrchestrator`, a second orchestrator next to
+  `HybridIntelligenceCore`. Dispatches Analysis-classified prompts to `AnalysisEngine` (the
+  first time that dispatch intent in `ENGINE_MAP` is actually exercised), runs every call
+  through the fallback layer, and maps the result through the contract mapper.
+  `HybridIntelligenceCore.execute()` is not imported for its dispatch logic and not modified.
+- `services/canon_run_service.py`, `canon_runs_collection()` — the "My Systems" library:
+  team-scoped, soft-delete (`is_active` flip, never a physical delete — WE EVOLVE, NEVER
+  DELETE), mirrors `pipeline_service.py`'s existing pattern exactly.
+- `routers/engines/canon.py` — `POST /canon/execute`, `GET /canon/runs`,
+  `GET /canon/runs/{id}`, `DELETE /canon/runs/{id}` (soft), `GET /canon/status`. Mounted the
+  same way as every other engine router (`dependencies=engine_dependencies`).
+
+Tests: `tests/test_canon_contract.py`, `tests/test_tri_model_execution.py`,
+`tests/test_canon_orchestrator.py`, `tests/test_canon_router_wiring.py`. Run the same way
+as the rest of this file's test commands, with the same `emergentintegrations` shim.
+
+Not done in this pass, left for the next one: the 13 engines' unenforced `gemini` entries,
+the triple `/health` registration, `requirements.txt` resolution, and actually fixing (not
+just detecting) the three engines' fabrication-on-parse-failure fallback.
 
 ---
 

@@ -79,6 +79,14 @@ from .engine_contract import (
     OutputSchema,
 )
 
+from .canon_contract import (
+    FourPartOutput,
+    CanonRunCreate,
+    CanonRunInDB,
+    CanonRunResponse,
+    CanonRunListResponse,
+)
+
 __all__ = [
     # User
     "UserCreate",
@@ -151,4 +159,11 @@ __all__ = [
     "EvidenceState",
     "InputSchema",
     "OutputSchema",
+
+    # Canon Contract
+    "FourPartOutput",
+    "CanonRunCreate",
+    "CanonRunInDB",
+    "CanonRunResponse",
+    "CanonRunListResponse",
 ]
