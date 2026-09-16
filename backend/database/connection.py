@@ -189,3 +189,7 @@ def execution_logs_collection():
 
 def password_reset_tokens_collection():
     return get_database().password_reset_tokens
+
+def canon_runs_collection():
+    """My Systems library: persisted four-part canon-contract outputs."""
+    return get_database().canon_runs
