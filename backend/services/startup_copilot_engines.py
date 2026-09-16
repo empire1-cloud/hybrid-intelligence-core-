@@ -130,6 +130,12 @@ class IdeaValidationEngine(StartupCopilotEngine):
     async def validate(self, input_data: IdeaValidationInput) -> IdeaValidationOutput:
         """Run idea validation framework."""
 
+        # Render the actual Mom Test rubric (previously defined but never sent
+        # to the model) so the framework is enforced, not just named.
+        fmf = self.MOM_TEST_CRITERIA["founder_market_fit"]
+        mv = self.MOM_TEST_CRITERIA["market_viability"]
+        tm = self.MOM_TEST_CRITERIA["timing"]
+
         # Construct validation prompt
         prompt = f"""
 You are a founder advisor helping validate a startup idea using the Mom Test framework.
@@ -146,20 +152,28 @@ IDEA:
 - Interviews conducted: {input_data.interviews_conducted}
 - Search volume: {input_data.search_volume}
 
-Evaluate this idea across three dimensions:
+Evaluate this idea across three dimensions, using these specific Mom Test
+thresholds as your rubric — do not substitute your own criteria:
 
 1. FOUNDER-MARKET FIT
-   - Rate the founder's advantage in this domain
-   - Do they have unfair advantages? (domain expertise, relationships, track record)
+   - Domain expertise: {fmf['domain_expertise']}
+   - Relationships: {fmf['relationships']}
+   - Previous wins: {fmf['previous_wins']}
 
 2. MARKET VIABILITY
-   - Is the problem real and urgent?
-   - What's the market size estimate?
-   - Are there bad solutions that create opportunity?
+   - Problem complaints: {mv['problem_complaints']}
+   - Market size: {mv['market_size']}
+   - Solution gaps: {mv['solution_gaps']}
 
 3. TIMING
-   - Is the market ready? Adoption curve?
-   - Is there urgency in customer feedback?
+   - Search volume: {tm['search_volume']}
+   - Adoption trend: {tm['adoption_trend']}
+   - Urgency: {tm['urgency']}
+
+For each dimension, state explicitly whether the founder's inputs above meet,
+partially meet, or fail to meet these thresholds. An unmet threshold stays
+unmet if supporting data wasn't provided — do not treat missing evidence as
+satisfying it.
 
 Based on this analysis, provide:
 - Overall verdict: GO | PIVOT | KILL
@@ -219,6 +233,15 @@ class BusinessModelEngine(StartupCopilotEngine):
     async def design_model(self, input_data: BusinessModelInput) -> BusinessModelOutput:
         """Design business model and unit economics."""
 
+        # Render the actual pattern library (previously defined but never sent
+        # to the model) so archetype selection is grounded in real comps
+        # instead of the model inventing its own.
+        patterns_block = "\n".join(
+            f"   - {name}: {info['revenue_model']} "
+            f"(comps: {', '.join(info['examples'])}; typical LTV/CAC {info['typical_ltv_cac']}:1)"
+            for name, info in self.PATTERNS.items()
+        )
+
         prompt = f"""
 You are a business model advisor. Design a sustainable business model.
 
@@ -230,7 +253,9 @@ PRODUCT:
 Competitive models: {', '.join(input_data.existing_business_models)}
 
 Design a business model by:
-1. Selecting from these archetypes: transactional_fintech, saas_subscription, marketplace, licensing
+1. Selecting from these archetypes (use the comps/LTV-CAC below as your
+   reference points, not your own recollection):
+{patterns_block}
 2. Defining revenue streams (take rates, subscription tiers, etc.)
 3. Calculating unit economics (ARPU, CAC, LTV, payback period)
 4. Identifying pricing tiers
@@ -278,8 +303,25 @@ class FundraisingEngine(StartupCopilotEngine):
         {"number": 10, "title": "Vision", "key": "What's the endgame?"}
     ]
 
+    # No verified VC contact database is wired into this engine. Set
+    # unconditionally on every output below rather than left to the model to
+    # include, so it cannot be silently dropped from a response.
+    VC_LIST_DISCLAIMER = (
+        "AI-generated starting list — verify every firm and contact "
+        "independently before outreach; do not treat emails/contacts as "
+        "confirmed."
+    )
+
     async def create_fundraising_strategy(self, input_data: FundraisingInput) -> FundraisingOutput:
         """Generate pitch deck and investor strategy."""
+
+        # Render the actual slide outline (previously defined but never sent
+        # to the model) so the deck follows the named structure, not the
+        # model's own idea of what a pitch deck looks like.
+        deck_block = "\n".join(
+            f"   {slide['number']}. {slide['title']} — {slide['key']}"
+            for slide in self.PITCH_DECK_OUTLINE
+        )
 
         prompt = f"""
 You are a fundraising advisor. Create a complete fundraising package.
@@ -292,8 +334,14 @@ FUNDRAISING CONTEXT:
 - Traction: {input_data.traction or "Pre-product"}
 
 Create:
-1. 10-slide pitch deck with content for each slide
-2. VC investor target list (100 VCs, segmented by stage/fit)
+1. A 10-slide pitch deck, one slide per line below, addressing exactly the
+   question given for that slide:
+{deck_block}
+2. VC investor target list (100 VCs, segmented by stage/fit). You have no
+   access to a verified, current VC contact database. For contact_email on
+   every entry, return null — do not guess, recall, or invent an address.
+   Firm name and focus area are fine from general knowledge; a specific
+   inbox is not something you can verify, so it is not something to state.
 3. Cold email outreach sequence (3 emails over 2 weeks)
 4. Estimated fundraising timeline
 
@@ -312,12 +360,21 @@ Format response as JSON matching FundraisingOutput schema.
 
         try:
             result_json = json.loads(self._strip_fences(response_text))
-            return FundraisingOutput(**result_json)
+            result = FundraisingOutput(**result_json)
         except (json.JSONDecodeError, ValidationError) as exc:
             raise SkillOutputError(
                 "FundraisingOutput could not be built from the model response",
                 response_text,
             ) from exc
+
+        # Enforced in code, not just requested in the prompt — a model can
+        # ignore a "return null" instruction, so the disclaimer is always
+        # present and every contact_email is always cleared, regardless of
+        # what the model actually returned.
+        result.disclaimer = self.VC_LIST_DISCLAIMER
+        for vc in result.investor_targets:
+            vc.contact_email = None
+        return result
 
 
 class GTMEngine(StartupCopilotEngine):
