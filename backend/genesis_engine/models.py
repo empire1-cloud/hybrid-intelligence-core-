@@ -12,7 +12,7 @@ class GameSpec(BaseModel):
     fps: int = Field(default=60, ge=30, le=120)
     fish_count: int = Field(default=8, ge=1, le=100)
     paytable: Dict[str, float] = Field(default_factory=lambda: {
-        "small": 0.25, "medium": 0.75, "large": 2.0, "boss": 12.0833333333
+        "small": 0.25, "medium": 0.75, "large": 2.0, "boss": 8.0
     })
     target_rtp: float = Field(default=0.965, gt=0.0, lt=1.0)
     shots_per_round: int = Field(default=10000, ge=100, le=2_000_000)
