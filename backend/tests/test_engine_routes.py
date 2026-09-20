@@ -26,6 +26,9 @@ CANONICAL_ENGINE_ROUTES = {
     "/api/money-pipeline",
     "/api/pipeline/compose",
     "/api/drift-report",
+    "/api/genesis/status",
+    "/api/genesis/generate",
+    "/api/genesis/verify",
 }
 
 LEGACY_FRONTEND_ROUTES = {
