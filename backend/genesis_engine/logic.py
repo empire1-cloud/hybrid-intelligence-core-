@@ -11,7 +11,7 @@ from typing import Any, Dict
 
 def _weights(paytable: Dict[str, float]) -> Dict[str, float]:
     # Canonical fish weights. Higher-value targets are less frequent.
-    defaults = {"small": 0.70, "medium": 0.22, "large": 0.07, "boss": 0.01}
+    defaults = {"small": 0.55, "medium": 0.30, "large": 0.10, "boss": 0.05}
     raw = {k: defaults.get(k, 1.0 / max(1, len(paytable))) for k in paytable}
     total = sum(raw.values()) or 1.0
     return {k: v / total for k, v in raw.items()}
