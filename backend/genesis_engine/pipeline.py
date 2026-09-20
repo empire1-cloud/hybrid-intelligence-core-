@@ -7,6 +7,7 @@ from .assets import build_assets
 from .audio import build_audio_manifest
 from .build import package
 from .compliance import build_verification_artifact
+from .deploy import build_deployment_artifact
 from .composer import compose_web
 from .logic import verify_math
 
@@ -22,5 +23,5 @@ class GenesisPipeline:
         verification_artifact=build_verification_artifact(spec,verification,manifest,root)
         built=package(spec,root) if include_build else {"status":"skipped"}
         artifacts=[verification_artifact,{"type":"playable","path":composed["entrypoint"],"status":composed["status"]}]
-        if built.get("web_zip"): artifacts.append({"type":"build","path":built["web_zip"],"status":built["status"]})
+        if built.get("web_zip"):\n            artifacts.append({"type":"build","path":built["web_zip"],"status":built["status"]})\n            artifacts.append(build_deployment_artifact(spec,root,built))
         return {"job_id":job_id,"status":"complete","manifest":manifest|{"composer":composed},"verification":verification,"artifacts":artifacts,"workspace":str(root),"build":built}
