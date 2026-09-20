@@ -17,7 +17,7 @@ class GenesisPipeline:
         root=Path(tempfile.gettempdir())/job_id; root.mkdir(parents=True,exist_ok=True)
         verification=verify_math(spec)
         assets=build_assets(spec,root) if include_vision else []
-        audio=build_audio_manifest(spec) if include_audio else []
+        audio=build_audio_manifest(spec,root) if include_audio else []
         manifest={"job_id":job_id,"spec":spec.model_dump(),"assets":assets,"audio":audio,"logic":verification}
         composed=compose_web(spec,verification,assets,audio,root)
         verification_artifact=build_verification_artifact(spec,verification,manifest,root)
