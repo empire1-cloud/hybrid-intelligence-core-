@@ -78,6 +78,9 @@ jobs:
       - name: Run Startup Copilot contract tests
         run: python -m pytest -q tests/test_startup_copilot_contract.py
 
+      - name: Run Genesis Engine tests
+        run: python -m pytest -q tests/test_genesis_engine.py tests/test_engine_routes.py
+
   requirements-resolve:
     # requirements.txt was unresolvable for a long time: it pinned
     # emergentintegrations (not on PyPI) and ALSO pinned litellm by direct URL,
