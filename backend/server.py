@@ -78,6 +78,7 @@ from routers.engines.history_protected import router as history_protected_router
 from routers.pipelines import router as pipelines_router
 from routers.sla113 import router as sla113_router
 from routes.startup_copilot_routes import router as startup_copilot_router
+from routers.genesis import router as genesis_router
 
 api_router.include_router(auth_router)
 api_router.include_router(teams_router)
@@ -129,6 +130,10 @@ api_router.include_router(sla113_router)
 # Startup Copilot: 12 founder skills for idea validation through scaling
 # Includes chained workflows for multi-skill founder guidance
 api_router.include_router(startup_copilot_router, dependencies=engine_dependencies)
+
+# Genesis Engine: end-to-end game specification -> assets -> deterministic math ->
+# verification -> playable web composition -> packaged build artifact.
+api_router.include_router(genesis_router)
 
 
 class StatusCheck(BaseModel):
