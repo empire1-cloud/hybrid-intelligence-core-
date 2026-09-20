@@ -20,4 +20,5 @@ def test_pipeline_creates_playable_bundle():
     root=Path(result["workspace"])
     assert (root/"web"/"index.html").exists()
     assert (root/"verification.json").exists()
-    assert Path(result["workspace"])/result["build"]["web_zip"]
+    assert (root/result["build"]["web_zip"]).exists()
+    assert (root/"deployment.json").exists()
