@@ -13,6 +13,7 @@ from .connection import (
     pipelines_collection,
     execution_logs_collection,
     password_reset_tokens_collection,
+    canon_runs_collection,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "pipelines_collection",
     "execution_logs_collection",
     "password_reset_tokens_collection",
+    "canon_runs_collection",
 ]

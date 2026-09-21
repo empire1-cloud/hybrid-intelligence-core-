@@ -73,6 +73,7 @@ from routers.engines import (
     money_pipeline_router,
     analytics_router,
     discovery_router,
+    canon_router,
 )
 from routers.engines.history_protected import router as history_protected_router
 from routers.pipelines import router as pipelines_router
@@ -114,6 +115,10 @@ api_router.include_router(anime_story_router, dependencies=engine_dependencies)
 api_router.include_router(art_direction_router, dependencies=engine_dependencies)
 api_router.include_router(money_pipeline_router, dependencies=engine_dependencies)
 
+# Canon Contract layer: four-part output contract + My Systems run library.
+# Additive alongside core_router/`/core/*` -- does not replace it.
+api_router.include_router(canon_router, dependencies=engine_dependencies)
+
 # Existing analytics transport remains read-only/public in this release so its
 # polling and WebSocket dashboard are not broken by the execution gate.
 api_router.include_router(analytics_router)
@@ -152,17 +157,6 @@ async def root():
         "billing": "monthly_cancel_anytime",
         "model_policy": "approved_non_google_only",
         "canon": "WE EVOLVE. NEVER DELETE.",
-    }
-
-
-@api_router.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "parent": "Empire-1",
-        "product": "Hybrid Intelligence Core",
-        "version": "2.2.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
