@@ -108,7 +108,14 @@ class VCProfile(BaseModel):
     focus_areas: List[str]
     check_size_min: float
     check_size_max: float
-    contact_email: Optional[str] = None
+    contact_email: Optional[str] = Field(
+        default=None,
+        description=(
+            "No verified VC contact database is wired into this engine. "
+            "Must be null unless the model is highly confident the address "
+            "is current and public — never a guessed or invented address."
+        ),
+    )
 
 
 class FundraisingInput(BaseModel):
@@ -128,6 +135,18 @@ class FundraisingOutput(BaseModel):
     vc_outreach_sequence: List[str]  # Email sequence steps
     estimated_timeline_weeks: int
     key_narrative_hooks: List[str]
+    disclaimer: str = Field(
+        default=(
+            "AI-generated starting list — verify every firm and contact "
+            "independently before outreach; do not treat emails/contacts as "
+            "confirmed."
+        ),
+        description=(
+            "Set unconditionally by FundraisingEngine after parsing the model "
+            "response, so it is always present regardless of what the model "
+            "returns — see startup_copilot_engines.py."
+        ),
+    )
 
 
 # ============================================================================

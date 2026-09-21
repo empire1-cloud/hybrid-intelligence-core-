@@ -61,10 +61,21 @@ cd "$APP_DIR/backend"
 source "$APP_DIR/venv/bin/activate"
 
 # Install dependencies
+# This used to abort the whole deploy. requirements.txt asked for
+# `emergentintegrations==0.1.1`, which is not on PyPI, so pip exited 1 and
+# `set -e` killed the script here -- before the extra-index install below
+# could ever supply it. requirements.txt now pins that package by direct URL,
+# so this line resolves on its own and needs no --extra-index-url.
 pip install -r requirements.txt
 
-# Install emergentintegrations
-pip install emergentintegrations --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/
+# emergentintegrations now arrives via requirements.txt above, at the pinned
+# 0.1.1. Verify rather than reinstall: re-running the install is a no-op that
+# still reaches out to the third-party index for nothing.
+python -c 'import emergentintegrations' || {
+    echo -e "${RED}ERROR: emergentintegrations missing after requirements install${NC}"
+    echo "requirements.txt should pin it by direct URL; check that line."
+    exit 1
+}
 
 echo -e "${GREEN}✓ Backend dependencies installed${NC}"
 
