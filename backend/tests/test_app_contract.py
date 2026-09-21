@@ -84,11 +84,58 @@ def test_unapproved_model_blocked_at_api_boundary(app):
     assert response.json().get("code") == "MODEL_POLICY_UNAPPROVED"
 
 
-# Two assertions are deliberately NOT included here yet, because both fail on
-# pre-existing conditions and failing the build on those would block unrelated
-# work. Both are worth fixing separately:
+def test_no_duplicate_route_registrations(app):
+    """No method+path pair is registered by two different handlers.
+
+    Starlette matches the FIRST route whose path matches, so a second
+    registration of the same method and path is dead code that never runs. That
+    is silent: the app starts, the endpoint answers, and only the wrong handler
+    replies.
+
+    This bit `GET /api/health` for a long time. routers/engines/core.py declared
+    a bare "/health" while its four sibling routes all declared "/core/...", so
+    with that router mounted without a prefix it landed on /api/health and, by
+    registering earlier, shadowed server.py's handler entirely.
+    """
+    from collections import Counter
+
+    registrations = Counter(
+        (method, route.path)
+        for route in app.routes
+        for method in (getattr(route, "methods", None) or ())
+        if getattr(route, "path", None)
+    )
+    duplicates = sorted(
+        f"{method} {path} (registered {count}x)"
+        for (method, path), count in registrations.items()
+        if count > 1
+    )
+    assert not duplicates, (
+        "a second registration of the same method+path never runs -- Starlette "
+        f"matches the first. Duplicates: {duplicates}"
+    )
+
+
+def test_api_health_still_serves_what_the_frontend_reads(app):
+    """`/api/health` keeps the keys the frontend renders from.
+
+    HomePage reads `status`, `engines` and `models`; EnginesPage builds its whole
+    table from `engines`. Both swallow a missing key (`|| []`, `?.`), so dropping
+    one does not error -- it silently renders an empty dashboard. server.py's
+    handler delegates to the pipeline health function to keep these present.
+    """
+    from fastapi.testclient import TestClient
+
+    body = TestClient(app).get("/api/health").json()
+
+    assert body.get("status") == "healthy"
+    assert body.get("engines"), "HomePage and EnginesPage both render `engines`"
+    assert body.get("models"), "HomePage renders a chip per entry in `models`"
+
+
+# One assertion is deliberately NOT included here yet, because it fails on a
+# pre-existing condition and failing the build on it would block unrelated work:
 #
-#   * duplicate routes -- `GET /api/health` is already registered twice.
 #   * engine-level model policy -- only strategy_engine, router and plan_builder
 #     call enforce_approved_model. Thirteen other engines carry a "gemini" entry
 #     in MODEL_CONFIG with no policy call. Unreachable over HTTP thanks to the

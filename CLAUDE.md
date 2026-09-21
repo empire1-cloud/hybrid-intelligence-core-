@@ -62,6 +62,28 @@ every syntax check, and 404s every call the frontend makes.
 
 Guarded by `tests/test_app_contract.py::test_no_double_api_prefix`.
 
+A related trap, and the reason a route can exist and still never run: **Starlette
+matches the FIRST route whose method and path match.** A second registration of
+the same pair is dead code. `GET /api/health` was registered twice for a long
+time — `routers/engines/core.py` declared a bare `"/health"` while its four
+sibling routes all declared `"/core/..."`, and that router is mounted with no
+prefix, so it landed on `/api/health` and, registering earlier, answered every
+request. server.py's handler never ran. (Earlier notes here said the *second*
+registration shadows the first. That is backwards.)
+
+Two things made it load-bearing rather than cosmetic. The frontend reads
+`engines` and `models` from `/api/health` — HomePage's stat cards and the whole
+EnginesPage table — and both swallow a missing key, so simply un-shadowing it
+would have rendered an empty dashboard with no error. And `PUBLIC_ENGINE_PATHS`
+in `core/engine_context.py` is an **exact-path** allowlist, so sitting on
+`/api/health` was also what made that handler anonymous; moving it needed a new
+entry there or it would have started returning 401.
+
+It is now declared `"/core/health"` like its siblings, `/api/health` delegates to
+the same function so the payload stays a superset of what it served before, and
+`test_no_duplicate_route_registrations` fails if any method+path is registered
+twice again.
+
 ### 3. Routers live in `backend/routers/`
 
 Not `backend/routes/`. A stray `backend/routes/` exists with a single file and no
@@ -185,7 +207,6 @@ Two things to know before touching the workflow:
 
 ## Known gaps (verified, not yet fixed)
 
-- `GET /api/health` is registered twice; the second registration shadows the first.
 - Thirteen engines carry a `gemini` entry with no `enforce_approved_model` call (see §1).
 - `backend_test.py` asserts that forcing `gemini-3-flash` *works*, which contradicts the
   policy the middleware enforces.

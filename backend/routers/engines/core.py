@@ -101,7 +101,14 @@ async def core_execution_log(limit: int = 50):
     }
 
 
-@router.get("/health")
+# Declared as "/core/health" to match the four sibling routes in this file
+# ("/core/execute", "/core/status", "/core/log", "/core/strategy-to-plan").
+# It used to be a bare "/health", which this router's lack of a prefix mounted
+# at /api/health -- colliding with server.py's handler. Starlette matches the
+# FIRST registration, and this one registers earlier, so server.py's never ran.
+# server.py's /api/health now delegates here, so this function stays the single
+# source of truth for the engine and model lists the frontend renders.
+@router.get("/core/health")
 async def health_check():
     """Check hybrid AI pipeline health."""
     return {

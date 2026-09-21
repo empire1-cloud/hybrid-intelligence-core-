@@ -54,6 +54,8 @@ from routers.admin import router as admin_router
 from routers.system import router as system_router
 from routers.execution_analytics import router as execution_analytics_router
 
+# /api/health delegates to this so the engine/model lists have one home.
+from routers.engines.core import health_check as core_pipeline_health
 from routers.engines import (
     core_router,
     strategy_router,
@@ -157,12 +159,28 @@ async def root():
 
 @api_router.get("/health")
 async def health_check():
+    """Product health, merged with the hybrid pipeline's own health report.
+
+    This handler was dead code until now. routers/engines/core.py declared a
+    bare "/health" -- while its four sibling routes all declare "/core/..." --
+    so with that router mounted without a prefix it also landed on /api/health.
+    Starlette matches the FIRST registration and that one registers earlier, so
+    every request to /api/health was answered there and never reached here.
+
+    The frontend reads `engines` and `models` from /api/health (HomePage stats
+    and the whole EnginesPage dashboard), so those keys must keep coming back.
+    Rather than duplicate the lists, this delegates to the same function, which
+    now also answers at its namespaced /api/core/health. The pipeline payload is
+    spread last so every key callers see today keeps the value it has today;
+    the product fields above it are purely additive.
+    """
+    pipeline = await core_pipeline_health()
     return {
-        "status": "healthy",
         "parent": "Empire-1",
         "product": "Hybrid Intelligence Core",
         "version": "2.2.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        **pipeline,
     }
 
 
