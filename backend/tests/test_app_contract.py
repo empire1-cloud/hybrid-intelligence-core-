@@ -84,18 +84,32 @@ def test_unapproved_model_blocked_at_api_boundary(app):
     assert response.json().get("code") == "MODEL_POLICY_UNAPPROVED"
 
 
+def test_no_duplicate_health_route(app):
+    """`GET /api/health` must resolve to exactly one handler.
+
+    This was the first of the two gaps this file used to defer (see below):
+    `server.py` and `routers/engines/core.py` both registered a handler at
+    this path; Starlette's first-registered-wins routing made one of them
+    permanently unreachable. Fixed by removing the duplicate in `server.py`
+    and folding its fields into the surviving handler in `core.py`.
+    """
+    matches = [
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/health" and "GET" in (getattr(route, "methods", None) or [])
+    ]
+    assert len(matches) == 1, f"expected exactly one GET /api/health handler, found {len(matches)}"
+
+
 def test_no_duplicate_route_registrations(app):
-    """No method+path pair is registered by two different handlers.
+    """Generalises `test_no_duplicate_health_route` to every route.
 
-    Starlette matches the FIRST route whose path matches, so a second
-    registration of the same method and path is dead code that never runs. That
-    is silent: the app starts, the endpoint answers, and only the wrong handler
-    replies.
-
-    This bit `GET /api/health` for a long time. routers/engines/core.py declared
-    a bare "/health" while its four sibling routes all declared "/core/...", so
-    with that router mounted without a prefix it landed on /api/health and, by
-    registering earlier, shadowed server.py's handler entirely.
+    That test pins the one path this actually bit. This one covers all of them:
+    Starlette matches the FIRST route whose method and path match, so a second
+    registration of the same pair is dead code anywhere it happens, not just on
+    /api/health. The failure is silent -- the app starts, the endpoint answers,
+    and only the wrong handler replies -- so nothing surfaces it except a check
+    like this one.
     """
     from collections import Counter
 
@@ -119,10 +133,12 @@ def test_no_duplicate_route_registrations(app):
 def test_api_health_still_serves_what_the_frontend_reads(app):
     """`/api/health` keeps the keys the frontend renders from.
 
-    HomePage reads `status`, `engines` and `models`; EnginesPage builds its whole
-    table from `engines`. Both swallow a missing key (`|| []`, `?.`), so dropping
-    one does not error -- it silently renders an empty dashboard. server.py's
-    handler delegates to the pipeline health function to keep these present.
+    HomePage reads `status`, `engines` and `models` -- the stat cards, the model
+    chips and the engines overview; EnginesPage builds its whole table from
+    `engines`. Both swallow a missing key (`|| []`, `?.`), so dropping one does
+    not error anywhere: it renders an empty dashboard. Deduping this route meant
+    choosing which handler survived, and the surviving one has to keep carrying
+    these; a future trim of that payload would otherwise pass every other check.
     """
     from fastapi.testclient import TestClient
 
@@ -134,7 +150,8 @@ def test_api_health_still_serves_what_the_frontend_reads(app):
 
 
 # One assertion is deliberately NOT included here yet, because it fails on a
-# pre-existing condition and failing the build on it would block unrelated work:
+# pre-existing condition and failing the build on it would block unrelated
+# work. Worth fixing separately:
 #
 #   * engine-level model policy -- only strategy_engine, router and plan_builder
 #     call enforce_approved_model. Thirteen other engines carry a "gemini" entry

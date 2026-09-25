@@ -54,8 +54,6 @@ from routers.admin import router as admin_router
 from routers.system import router as system_router
 from routers.execution_analytics import router as execution_analytics_router
 
-# /api/health delegates to this so the engine/model lists have one home.
-from routers.engines.core import health_check as core_pipeline_health
 from routers.engines import (
     core_router,
     strategy_router,
@@ -75,6 +73,7 @@ from routers.engines import (
     money_pipeline_router,
     analytics_router,
     discovery_router,
+    canon_router,
 )
 from routers.engines.history_protected import router as history_protected_router
 from routers.pipelines import router as pipelines_router
@@ -116,6 +115,10 @@ api_router.include_router(anime_story_router, dependencies=engine_dependencies)
 api_router.include_router(art_direction_router, dependencies=engine_dependencies)
 api_router.include_router(money_pipeline_router, dependencies=engine_dependencies)
 
+# Canon Contract layer: four-part output contract + My Systems run library.
+# Additive alongside core_router/`/core/*` -- does not replace it.
+api_router.include_router(canon_router, dependencies=engine_dependencies)
+
 # Existing analytics transport remains read-only/public in this release so its
 # polling and WebSocket dashboard are not broken by the execution gate.
 api_router.include_router(analytics_router)
@@ -154,33 +157,6 @@ async def root():
         "billing": "monthly_cancel_anytime",
         "model_policy": "approved_non_google_only",
         "canon": "WE EVOLVE. NEVER DELETE.",
-    }
-
-
-@api_router.get("/health")
-async def health_check():
-    """Product health, merged with the hybrid pipeline's own health report.
-
-    This handler was dead code until now. routers/engines/core.py declared a
-    bare "/health" -- while its four sibling routes all declare "/core/..." --
-    so with that router mounted without a prefix it also landed on /api/health.
-    Starlette matches the FIRST registration and that one registers earlier, so
-    every request to /api/health was answered there and never reached here.
-
-    The frontend reads `engines` and `models` from /api/health (HomePage stats
-    and the whole EnginesPage dashboard), so those keys must keep coming back.
-    Rather than duplicate the lists, this delegates to the same function, which
-    now also answers at its namespaced /api/core/health. The pipeline payload is
-    spread last so every key callers see today keeps the value it has today;
-    the product fields above it are purely additive.
-    """
-    pipeline = await core_pipeline_health()
-    return {
-        "parent": "Empire-1",
-        "product": "Hybrid Intelligence Core",
-        "version": "2.2.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        **pipeline,
     }
 
 

@@ -22,15 +22,8 @@ from services.usage_service import check_usage_limit
 
 engine_security = HTTPBearer(auto_error=False)
 
-# Exact-path allowlist: GET on these skips auth and usage metering.
-# "/api/core/health" is here because the pipeline health report used to be
-# declared as a bare "/health" and so landed on /api/health, which made it
-# public by accident. Giving it the "/core/" prefix its siblings use would have
-# started returning 401 to a previously anonymous endpoint, so it is listed
-# explicitly -- next to its sibling "/api/core/status", which is public already.
 PUBLIC_ENGINE_PATHS = {
     "/api/health",
-    "/api/core/health",
     "/api/core/status",
 }
 

@@ -1,6 +1,7 @@
 """
 Core and Health endpoints for the Hybrid Intelligence system.
 """
+from datetime import datetime, timezone
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -101,18 +102,23 @@ async def core_execution_log(limit: int = 50):
     }
 
 
-# Declared as "/core/health" to match the four sibling routes in this file
-# ("/core/execute", "/core/status", "/core/log", "/core/strategy-to-plan").
-# It used to be a bare "/health", which this router's lack of a prefix mounted
-# at /api/health -- colliding with server.py's handler. Starlette matches the
-# FIRST registration, and this one registers earlier, so server.py's never ran.
-# server.py's /api/health now delegates here, so this function stays the single
-# source of truth for the engine and model lists the frontend renders.
-@router.get("/core/health")
+@router.get("/health")
 async def health_check():
-    """Check hybrid AI pipeline health."""
+    """Check hybrid AI pipeline health.
+
+    This is the one surviving `/api/health` handler -- pass 1 documented (and
+    pass 2 verified against the live route table) that `server.py` also
+    registered a `/health` handler at the same path, which Starlette's
+    first-registered-wins routing made permanently unreachable. `server.py`'s
+    duplicate is removed; its fields (parent/product/version/timestamp) are
+    folded in below so nothing either version promised is lost.
+    """
     return {
         "status": "healthy",
+        "parent": "Empire-1",
+        "product": "Hybrid Intelligence Core",
+        "version": "2.2.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "pipeline": "hybrid-ai-stack",
         "model_policy": "approved-non-google-only",
         "models": {
