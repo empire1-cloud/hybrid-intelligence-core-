@@ -101,6 +101,54 @@ def test_no_duplicate_health_route(app):
     assert len(matches) == 1, f"expected exactly one GET /api/health handler, found {len(matches)}"
 
 
+def test_no_duplicate_route_registrations(app):
+    """Generalises `test_no_duplicate_health_route` to every route.
+
+    That test pins the one path this actually bit. This one covers all of them:
+    Starlette matches the FIRST route whose method and path match, so a second
+    registration of the same pair is dead code anywhere it happens, not just on
+    /api/health. The failure is silent -- the app starts, the endpoint answers,
+    and only the wrong handler replies -- so nothing surfaces it except a check
+    like this one.
+    """
+    from collections import Counter
+
+    registrations = Counter(
+        (method, route.path)
+        for route in app.routes
+        for method in (getattr(route, "methods", None) or ())
+        if getattr(route, "path", None)
+    )
+    duplicates = sorted(
+        f"{method} {path} (registered {count}x)"
+        for (method, path), count in registrations.items()
+        if count > 1
+    )
+    assert not duplicates, (
+        "a second registration of the same method+path never runs -- Starlette "
+        f"matches the first. Duplicates: {duplicates}"
+    )
+
+
+def test_api_health_still_serves_what_the_frontend_reads(app):
+    """`/api/health` keeps the keys the frontend renders from.
+
+    HomePage reads `status`, `engines` and `models` -- the stat cards, the model
+    chips and the engines overview; EnginesPage builds its whole table from
+    `engines`. Both swallow a missing key (`|| []`, `?.`), so dropping one does
+    not error anywhere: it renders an empty dashboard. Deduping this route meant
+    choosing which handler survived, and the surviving one has to keep carrying
+    these; a future trim of that payload would otherwise pass every other check.
+    """
+    from fastapi.testclient import TestClient
+
+    body = TestClient(app).get("/api/health").json()
+
+    assert body.get("status") == "healthy"
+    assert body.get("engines"), "HomePage and EnginesPage both render `engines`"
+    assert body.get("models"), "HomePage renders a chip per entry in `models`"
+
+
 # One assertion is deliberately NOT included here yet, because it fails on a
 # pre-existing condition and failing the build on it would block unrelated
 # work. Worth fixing separately:
