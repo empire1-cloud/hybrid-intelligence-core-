@@ -2406,6 +2406,12 @@ body {
   border-color: rgba(255, 107, 107, 0.3);
 }
 
+/* Not enough executions to judge drift -- deliberately neutral, not green. */
+.drift-card.unknown {
+  border-color: rgba(160, 160, 170, 0.3);
+  opacity: 0.85;
+}
+
 .drift-header {
   display: flex;
   align-items: center;

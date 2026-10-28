@@ -97,7 +97,9 @@ class HybridAITester:
             else:
                 # Check model availability
                 models = response.get("models", {})
-                expected_models = ["gpt-5.2", "claude-sonnet-4.5", "gemini-3-flash"]
+                # Google/Gemini is blocked by services/model_policy.py; it must not
+                # be expected as "available" (audit fix, Oct 2026).
+                expected_models = ["gpt-5.2", "claude-sonnet-4.5"]
                 
                 all_available = all(
                     models.get(model) == "available" 
@@ -132,7 +134,7 @@ class HybridAITester:
             },
             {
                 "goal": "What is machine learning?",
-                "expected_model": "gemini-3-flash",
+                "expected_model": "gpt-4o-mini",  # QUICK_MODEL; Gemini is policy-blocked
                 "task_type": "quick"
             },
             {
@@ -165,6 +167,7 @@ class HybridAITester:
         """Test force model override functionality"""
         print("\n🔍 Testing Force Model Override...")
         
+        # An approved override must be honoured...
         success, response = self.run_test(
             "Force Model Override",
             "POST", 
@@ -172,19 +175,30 @@ class HybridAITester:
             200,
             data={
                 "goal": "Write code",  # Would normally go to gpt-5.2
-                "force_model": "gemini-3-flash"  # Force to gemini
+                "force_model": "claude-sonnet-4.5"
             }
         )
         
         if success:
             actual_model = response.get("model")
-            override_works = actual_model == "gemini-3-flash"
+            override_works = actual_model == "claude-sonnet-4.5"
             
             self.log_test(
                 "Model Override Functionality",
                 override_works,
-                f"Expected: gemini-3-flash, Got: {actual_model}"
+                f"Expected: claude-sonnet-4.5, Got: {actual_model}"
             )
+
+        # ...and a Google/Gemini override must fail closed. This test used to
+        # assert that forcing gemini-3-flash *succeeded*, contradicting the
+        # model policy the API boundary enforces.
+        self.run_test(
+            "Force Gemini Override Is Blocked",
+            "POST",
+            "route",
+            400,
+            data={"goal": "Write code", "force_model": "gemini-3-flash"}
+        )
 
     def test_strategy_generation(self):
         """Test full strategy generation pipeline"""
@@ -299,7 +313,7 @@ class HybridAITester:
             )
         
         # Test specific model drift reports
-        models = ["gpt-5.2", "claude-sonnet-4.5", "gemini-3-flash"]
+        models = ["gpt-5.2", "claude-sonnet-4.5"]
         for model in models:
             success, response = self.run_test(
                 f"Drift Report - {model}",

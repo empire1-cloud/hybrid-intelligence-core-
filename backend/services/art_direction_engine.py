@@ -13,6 +13,8 @@ import asyncio
 from dotenv import load_dotenv
 from typing import Optional, List, Dict
 from pydantic import BaseModel
+from services.engine_errors import EngineOutputError
+from services.model_policy import resolve_engine_model
 
 load_dotenv()
 
@@ -194,7 +196,7 @@ Return ONLY the JSON object. No other text."""
     def _create_chat(cls, model: str = None) -> LlmChat:
         model = model or cls.DEFAULT_MODEL
         api_key = cls._get_api_key()
-        provider, model_name = cls.MODEL_CONFIG.get(model, cls.MODEL_CONFIG[cls.DEFAULT_MODEL])
+        model, provider, model_name = resolve_engine_model(model, cls.MODEL_CONFIG, cls.DEFAULT_MODEL)
         
         chat = LlmChat(
             api_key=api_key,
@@ -268,45 +270,13 @@ Return ONLY the JSON object. No other text."""
             
             return json.loads(response)
         except json.JSONDecodeError:
-            return {
-                "project_name": project,
-                "visual_style": {
-                    "genre": genre or "mixed",
-                    "influences": ["TBD"],
-                    "description": "Art direction generation failed - retry required"
-                },
-                "color_palette": {
-                    "primary": ["#333333", "#666666"],
-                    "secondary": ["#999999"],
-                    "accents": ["#FF0000"],
-                    "mood_notes": "Placeholder palette"
-                },
-                "character_style": {
-                    "proportions": "TBD",
-                    "linework": "TBD",
-                    "shading": "TBD",
-                    "expression_rules": [],
-                    "silhouette_rules": []
-                },
-                "environment_style": {
-                    "lighting": "TBD",
-                    "atmosphere": "TBD",
-                    "detail_level": "medium",
-                    "composition_rules": []
-                },
-                "camera_direction": {
-                    "framing": [],
-                    "angles": [],
-                    "motion_rules": []
-                },
-                "texture_rules": {
-                    "materials": [],
-                    "surface_treatment": "TBD",
-                    "consistency_requirements": []
-                },
-                "production_constraints": constraints or [],
-                "do_not_use": []
-            }
+            # Honesty fix (audit, Oct 2026): this previously returned a hardcoded
+            # placeholder as a successful result -- billed, and indistinguishable
+            # from real output. Raise like Strategy/Plan/Analysis already do.
+            raise EngineOutputError(
+                "Art Direction Engine returned output that did not parse as JSON.",
+                response_text=response if isinstance(response, str) else str(response),
+            )
     
     @classmethod
     def generate_direction(

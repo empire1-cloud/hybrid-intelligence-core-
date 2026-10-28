@@ -12,6 +12,8 @@ import asyncio
 from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
+from services.engine_errors import EngineOutputError
+from services.model_policy import resolve_engine_model
 
 load_dotenv()
 
@@ -99,7 +101,7 @@ Return ONLY the JSON object. No other text."""
     def _create_chat(cls, model: str = None) -> LlmChat:
         model = model or cls.DEFAULT_MODEL
         api_key = cls._get_api_key()
-        provider, model_name = cls.MODEL_CONFIG.get(model, cls.MODEL_CONFIG[cls.DEFAULT_MODEL])
+        model, provider, model_name = resolve_engine_model(model, cls.MODEL_CONFIG, cls.DEFAULT_MODEL)
         
         chat = LlmChat(
             api_key=api_key,
@@ -163,18 +165,13 @@ Return ONLY the JSON object. No other text."""
             
             return json.loads(response)
         except json.JSONDecodeError:
-            return {
-                "name": "Unnamed Persona",
-                "role": audience,
-                "background": "Persona generation failed - retry required",
-                "goals": ["TBD"],
-                "pains": ["TBD"],
-                "triggers": ["TBD"],
-                "buying_criteria": ["TBD"],
-                "objections": ["TBD"],
-                "preferred_channels": ["TBD"],
-                "preferred_messaging": ["TBD"]
-            }
+            # Honesty fix (audit, Oct 2026): this previously returned a hardcoded
+            # placeholder as a successful result -- billed, and indistinguishable
+            # from real output. Raise like Strategy/Plan/Analysis already do.
+            raise EngineOutputError(
+                "Persona Engine returned output that did not parse as JSON.",
+                response_text=response if isinstance(response, str) else str(response),
+            )
     
     @classmethod
     def generate_persona(

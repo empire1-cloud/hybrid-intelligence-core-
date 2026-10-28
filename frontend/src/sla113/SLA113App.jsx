@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import SLA113Page from './SLA113Page';
+import { installOperatorAuth } from './operatorAuth';
 
 const TITLE_IMAGE = "https://customer-assets.emergentagent.com/job_3653cf8a-8710-488d-846f-2f0428b714dd/artifacts/v9jg01gi_titleScreen.jpg";
 
@@ -102,6 +103,9 @@ function TitleScreen({ onComplete }) {
 
 export default function SLA113App() {
   const [showTitle, setShowTitle] = useState(true);
+
+  // Attach operator credentials to SLA113 API calls while the console is mounted.
+  useEffect(() => installOperatorAuth(), []);
 
   return (
     <div id="sla113-root">

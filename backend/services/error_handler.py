@@ -1,3 +1,4 @@
+from services.secret_redaction import redact_secrets
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
@@ -99,14 +100,15 @@ class ErrorHandler:
         return PipelineError(
             error=True,
             type=error_type.value,
-            message=error_message,
+            message=redact_secrets(error_message),
             stage=stage_name
         )
     
     @classmethod
     def _generate_message(cls, error: Exception, error_type: ErrorType) -> str:
         """Generate a concise, operator-friendly error message."""
-        error_str = str(error)
+        # Provider errors can embed the API key in the request URL.
+        error_str = redact_secrets(str(error))
         
         # Truncate long messages
         if len(error_str) > 200:

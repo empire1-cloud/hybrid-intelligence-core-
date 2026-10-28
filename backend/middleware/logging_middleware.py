@@ -4,6 +4,7 @@ Middleware to automatically log all engine API calls.
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+import logging
 import time
 import json
 from typing import Callable
@@ -28,7 +29,8 @@ LOGGED_ENDPOINTS = [
     "/api/money-pipeline",
     "/api/pipeline/compose",
     "/api/core/execute",
-    "/api/route"
+    "/api/route",
+    "/api/startup-copilot",
 ]
 
 
@@ -50,7 +52,8 @@ def get_engine_from_path(path: str) -> str:
         "/api/money-pipeline": "money_pipeline_engine",
         "/api/pipeline/compose": "pipeline_composer_engine",
         "/api/core/execute": "hybrid_intelligence_core",
-        "/api/route": "routing_engine"
+        "/api/route": "routing_engine",
+        "/api/startup-copilot": "startup_copilot",
     }
     
     for endpoint, engine in path_to_engine.items():
@@ -126,6 +129,30 @@ class ExecutionLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms=duration_ms,
             source="api"
         )
+
+        # Team-scoped history. Audit finding (Oct 2026): only /api/canon/* wrote
+        # to the team-scoped `execution_logs` collection, so every other engine
+        # run was missing from the customer's Execution History and
+        # /api/analytics/executions/* -- it only reached the process-local JSON
+        # file above, which mixes all tenants. Same writer canon uses.
+        context = getattr(request.state, "engine_context", None)
+        if context is not None:
+            try:
+                from core.engine_context import log_engine_call
+
+                await log_engine_call(
+                    context,
+                    engine=engine,
+                    input_data=input_data if isinstance(input_data, dict) else {"raw": str(input_data)[:500]},
+                    output_data=output_data if isinstance(output_data, dict) else None,
+                    error_message=error if status == "error" else None,
+                    duration_ms=duration_ms,
+                    source="api",
+                )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Failed to write team-scoped execution log", extra={"path": path}
+                )
         
         # Return reconstructed response
         return Response(

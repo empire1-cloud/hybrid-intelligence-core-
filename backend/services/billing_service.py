@@ -144,6 +144,27 @@ PUBLIC_PLAN_FIELDS = (
 )
 
 
+def _origin(url: str) -> str:
+    from urllib.parse import urlsplit
+    parts = urlsplit(url or "")
+    return f"{parts.scheme}://{parts.netloc}".lower() if parts.scheme and parts.netloc else ""
+
+
+def _same_origin_or_default(candidate: Optional[str], default: str) -> str:
+    """Accept a caller-supplied redirect only on the app's own origin.
+
+    Client-supplied success/cancel/return URLs were passed to Stripe verbatim,
+    letting anyone use HIC's checkout as an open redirect to an arbitrary site.
+    """
+    if not candidate:
+        return default
+    allowed = {_origin(APP_URL)} | {
+        _origin(o.strip()) for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip() and o.strip() != "*"
+    }
+    allowed.discard("")
+    return candidate if _origin(candidate) in allowed else default
+
+
 def billing_events_collection():
     """Get billing events collection for webhook history."""
     return get_database().billing_events
@@ -223,8 +244,8 @@ async def create_checkout_session(
 
     customer_id = await get_or_create_stripe_customer(team_id, owner_email, team_name)
 
-    success_url = success_url or f"{APP_URL}/billing?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = cancel_url or f"{APP_URL}/billing?canceled=true"
+    success_url = _same_origin_or_default(success_url, f"{APP_URL}/billing?session_id={{CHECKOUT_SESSION_ID}}")
+    cancel_url = _same_origin_or_default(cancel_url, f"{APP_URL}/billing?canceled=true")
 
     metadata = {
         "team_id": team_id,
@@ -277,7 +298,7 @@ async def create_portal_session(
         raise BillingError("Billing is not configured", 500)
 
     customer_id = await get_or_create_stripe_customer(team_id, owner_email, team_name)
-    return_url = return_url or f"{APP_URL}/billing"
+    return_url = _same_origin_or_default(return_url, f"{APP_URL}/billing")
 
     session = stripe.billing_portal.Session.create(
         customer=customer_id,
@@ -304,12 +325,16 @@ async def handle_webhook_event(payload: bytes, sig_header: str) -> Dict:
 
     webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
+    # Fail closed. Previously, with STRIPE_SECRET_KEY set but no webhook secret,
+    # this accepted UNSIGNED JSON as a Stripe event -- anyone could POST a
+    # forged checkout.session.completed / subscription event and grant any
+    # team a paid plan (audit finding, Oct 2026).
+    if not webhook_secret:
+        logger.error("Rejected Stripe webhook: STRIPE_WEBHOOK_SECRET is not configured")
+        raise BillingError("Webhook signing secret is not configured", 503)
+
     try:
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-        else:
-            import json
-            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
     except ValueError as e:
         raise BillingError(f"Invalid payload: {str(e)}", 400)
     except stripe.error.SignatureVerificationError as e:
@@ -318,12 +343,37 @@ async def handle_webhook_event(payload: bytes, sig_header: str) -> Dict:
     event_type = event["type"]
     data = event["data"]["object"]
 
+    # Idempotency: Stripe retries deliveries and a captured signed payload can
+    # be replayed. Apply each event id once.
+    already = await billing_events_collection().find_one(
+        {"event_id": event["id"], "status": {"$ne": "failed"}}
+    )
+    if already:
+        return {"received": True, "event_type": event_type, "duplicate": True}
+
     await billing_events_collection().insert_one({
         "event_id": event["id"],
         "event_type": event_type,
         "data": dict(data),
+        "status": "processing",
         "processed_at": datetime.now(timezone.utc),
     })
+
+    try:
+        await _dispatch_billing_event(event_type, data)
+    except Exception:
+        await billing_events_collection().update_one(
+            {"event_id": event["id"]}, {"$set": {"status": "failed"}}
+        )
+        raise
+
+    await billing_events_collection().update_one(
+        {"event_id": event["id"]}, {"$set": {"status": "processed"}}
+    )
+    return {"received": True, "event_type": event_type}
+
+
+async def _dispatch_billing_event(event_type: str, data: Dict) -> None:
 
     if event_type == "checkout.session.completed":
         await handle_checkout_completed(data)
@@ -337,8 +387,6 @@ async def handle_webhook_event(payload: bytes, sig_header: str) -> Dict:
         await handle_invoice_paid(data)
     elif event_type == "invoice.payment_failed":
         await handle_invoice_payment_failed(data)
-
-    return {"received": True, "event_type": event_type}
 
 
 async def handle_checkout_completed(session: Dict):

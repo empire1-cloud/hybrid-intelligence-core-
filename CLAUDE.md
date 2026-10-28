@@ -42,11 +42,14 @@ enforces this at the API boundary and fails closed — a request carrying a top-
 `model` or `force_model` of `gemini-*` gets `400 MODEL_POLICY_BLOCKED`. An unapproved
 model gets `400 MODEL_POLICY_UNAPPROVED` rather than being silently rerouted.
 
-> **Known gap — do not copy the surrounding code.** Only `strategy_engine.py`,
-> `router.py` and `plan_builder.py` call `enforce_approved_model()`. Thirteen other
-> engines still carry a `"gemini-3-flash"` entry in their own `MODEL_CONFIG` and
-> enforce nothing. Those paths are unreachable over HTTP because of the middleware,
-> but reachable by any in-process caller. New engines call the policy.
+> **Fixed 2026-10-28 (see `docs/AUDIT_2026-10-28.md`).** Every engine's `_create_chat`
+> now calls `services.model_policy.resolve_engine_model(model, cls.MODEL_CONFIG,
+> cls.DEFAULT_MODEL)`, which fails closed on Google/unknown models, honours approved
+> models an engine doesn't list (no silent reroute to the default), and refuses any
+> Google provider pair even under an approved name. The stale `"gemini-3-flash"`
+> `MODEL_CONFIG` entries are inert and left in place. **New engines call the resolver.**
+> The one direct Gemini call in the app (`/api/sla113/vision/generate-image`) is
+> blocked unless `SLA113_GEMINI_IMAGE_EXCEPTION=enabled`.
 
 ### 2. Routers declare a **bare** prefix
 
@@ -141,9 +144,12 @@ Analytics read this back at `/api/analytics/executions/*`, all team-scoped.
 ## Commands
 
 ```bash
-# backend tests (PYTHONPATH matters)
-cd backend && PYTHONPATH=. python -m pytest -q tests/test_app_contract.py
-cd backend && PYTHONPATH=. python -m pytest -q tests/test_model_policy.py
+# backend tests (PYTHONPATH matters; <shim> = a copy of emergentintegrations_local_backup
+# named emergentintegrations, exactly as CI builds it)
+cd backend && PYTHONPATH=.:<shim> python -m pytest -q tests/test_app_contract.py
+cd backend && PYTHONPATH=.:<shim> python -m pytest -q tests/test_model_policy.py
+cd backend && PYTHONPATH=.:<shim> python -m pytest -q tests/test_audit_hardening.py tests/test_e2e_customer_journey.py
+# (the last two need mongomock-motor; no network, no live Mongo)
 
 # frontend
 cd frontend && npm install && npm run build     # craco
@@ -183,21 +189,46 @@ Two things to know before touching the workflow:
 
 ---
 
-## Known gaps (verified, not yet fixed)
+## Audit 2026-10-28 — read `docs/AUDIT_2026-10-28.md` first
 
-- Thirteen engines carry a `gemini` entry with no `enforce_approved_model` call (see §1).
-  Still true after both Canon Contract passes below — those engine files' model-selection
+That audit re-verified this file against the running code and found it understated
+several gaps. Rules that now hold, each guarded by `tests/test_audit_hardening.py` or
+`tests/test_e2e_customer_journey.py`:
+
+- **Engines never fabricate.** `except json.JSONDecodeError` raises `EngineOutputError`
+  in all engines (it was 11, not 4). A static test fails if any engine returns from
+  that block again.
+- **Secrets never leave the process.** `services/secret_redaction.py` is applied by the
+  global `HTTPException` handler, `ErrorHandler` and both execution loggers. Do not
+  bypass it with a raw `JSONResponse(content=str(e))`.
+- **SLA113 writes need an operator** (`core/operator_guard.py`). Reads and websockets
+  stay public for the Arcade/Showcase. A new public SLA113 write must be added to
+  `PUBLIC_WRITE_PATTERNS` deliberately, with a rate limit.
+- **Usage is reserved atomically** (`usage_service.reserve_execution`) before execution
+  and released on failure. Do not reintroduce check-then-increment.
+- **Every engine run reaches team-scoped history.** `ExecutionLoggingMiddleware` writes
+  through `log_engine_call` for any request with an `engine_context`.
+- **Analytics never invent numbers.** Unmeasured values are `null` / `unknown`, never
+  `random.*` or a placeholder.
+- **Production fails closed** on a missing/short `JWT_SECRET_KEY` (`APP_ENV=production`)
+  and on a missing `STRIPE_WEBHOOK_SECRET` (webhooks rejected).
+
+## Known gaps (pre-audit list; see the audit for current status)
+
+- ~~Thirteen engines carry a `gemini` entry with no `enforce_approved_model` call (see §1).~~
+  **Fixed 2026-10-28** — 12 engines (the 13th grep hit was `drift_monitor.py`).
+  Original note: still true after both Canon Contract passes below — those engine files' model-selection
   code was not touched. (Three of the thirteen — `strategy_engine.py`, `plan_builder.py`,
   `analysis_engine.py` — did get touched in pass 2, but only their JSON-parse-failure
   handling; their `MODEL_CONFIG`/policy-enforcement gap is untouched.)
-- `backend_test.py` asserts that forcing `gemini-3-flash` *works*, which contradicts the
-  policy the middleware enforces.
+- ~~`backend_test.py` asserts that forcing `gemini-3-flash` *works*.~~ **Fixed 2026-10-28.**
 - `services/hybrid_core.py::HybridIntelligenceCore.execute()` only ever calls
   `StrategyEngine` or `PlanBuilderEngine`; its own `ENGINE_MAP` dict is declared and never
   read anywhere. Left as-is (existing `/core/*` behavior is not to be changed) in both
   passes; `/canon/*` dispatches to 8 engines for real instead — see pass 2 below.
-- Opportunity Mapper, Evaluator, Pricing and Persona (newly wired into `/canon/*` in pass 2)
-  still fabricate a hardcoded placeholder on `JSONDecodeError`, the same bug class fixed in
+- ~~Opportunity Mapper, Evaluator, Pricing and Persona (newly wired into `/canon/*` in pass 2)
+  still fabricate a hardcoded placeholder on `JSONDecodeError`~~ **Fixed 2026-10-28, and it was
+  11 engines, not 4.** Original note: the same bug class fixed in
   Strategy/Plan/Analysis in pass 2. `services/canon_contract.py` detects and refuses to
   canonize their specific fallback shapes, same as pass 1 did for the original three before
   they were fixed at the source. Not fixed at the source for these four — next pass.

@@ -81,4 +81,10 @@ The analytics dashboard uses `psutil` for real system metrics:
 pip install psutil
 ```
 
-If `psutil` is unavailable, the dashboard displays mock data with a warning indicator.
+If `psutil` is unavailable, the dashboard reports system metrics as unavailable (shown as "—"). It never substitutes placeholder numbers.
+
+## Production configuration
+
+Copy `deployment/env.production.template` to `backend/.env` and fill every required value. With `APP_ENV=production` the backend refuses to start without a strong `JWT_SECRET_KEY`, and Stripe webhooks are rejected without `STRIPE_WEBHOOK_SECRET`. SLA113 write actions require `SLA113_OPERATOR_KEY` (entered once in the SLA113 console) or a system-admin login.
+
+Audit status, evidence and known limitations: [`docs/AUDIT_2026-10-28.md`](docs/AUDIT_2026-10-28.md).

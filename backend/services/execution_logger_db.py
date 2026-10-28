@@ -12,6 +12,7 @@ from bson import ObjectId
 from database import execution_logs_collection, users_collection, pipelines_collection
 from models import ExecutionLogCreate, ExecutionLogResponse, ExecutionLogQuery
 from services.audit_service import create_audit_log
+from services.secret_redaction import redact_obj, redact_secrets
 
 
 async def log_execution(
@@ -57,9 +58,9 @@ async def log_execution(
         "execution_id": execution_id,
         "engine": engine,
         "pipeline_id": pipeline_id,
-        "input_data": _sanitize_for_mongo(input_data),
-        "output_data": _sanitize_for_mongo(output_data) if output_data else None,
-        "error_message": error_message,
+        "input_data": redact_obj(_sanitize_for_mongo(input_data)),
+        "output_data": redact_obj(_sanitize_for_mongo(output_data)) if output_data else None,
+        "error_message": redact_secrets(error_message),
         "status": "success" if error_message is None else "error",
         "source": source,
         "duration_ms": duration_ms,

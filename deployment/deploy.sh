@@ -41,7 +41,7 @@ echo -e "${YELLOW}[1/7] Checking environment files...${NC}"
 
 if [ ! -f "$APP_DIR/backend/.env" ]; then
     echo -e "${RED}ERROR: Backend .env file not found!${NC}"
-    echo "Please copy .env.production.template to $APP_DIR/backend/.env and configure it"
+    echo "Please copy deployment/env.production.template to $APP_DIR/backend/.env and configure it"
     exit 1
 fi
 

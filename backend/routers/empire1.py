@@ -4,7 +4,9 @@ from typing import Optional, Dict, Any, List
 import uuid
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from core.operator_guard import require_operator
 from pydantic import BaseModel
 
 from database.connection import get_database
@@ -71,7 +73,9 @@ async def list_ecosystem():
     return {"repos": repos, "total": len(repos)}
 
 
-@router.patch("/ecosystem/{repo_id}")
+# Operator-only: this record drives the public showcase deeplinks, so an
+# anonymous PATCH could repoint them anywhere (audit finding, Oct 2026).
+@router.patch("/ecosystem/{repo_id}", dependencies=[Depends(require_operator)])
 async def update_ecosystem_repo(repo_id: str, body: Dict[str, Any]):
     body.pop("id", None); body.pop("_id", None)
     body["updated_at"] = datetime.now(timezone.utc).isoformat()

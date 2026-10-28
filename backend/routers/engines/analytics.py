@@ -28,7 +28,7 @@ try:
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
-    print("WARNING: psutil not available, using mock system metrics")
+    print("WARNING: psutil not available; system metrics will be reported as unavailable (null)")
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -78,25 +78,27 @@ class EngineErrorItem(BaseModel):
 
 class DriftAlert(BaseModel):
     engine: str
-    status: str  # green, yellow, red
-    confidence_trend: str  # stable, rising, falling
+    status: str  # green, yellow, red, unknown
+    confidence_trend: str  # stable, rising, falling, insufficient_data
     last_check: str
     message: str
 
 
 class SystemHealthResponse(BaseModel):
-    cpu_usage: float
-    memory_usage: float
-    memory_total_gb: float
-    memory_used_gb: float
-    disk_usage: float
-    disk_total_gb: float
-    disk_used_gb: float
+    # None means "not measured" -- never a placeholder number (audit, Oct 2026:
+    # the previous fallback returned random.uniform() values as live metrics).
+    cpu_usage: Optional[float] = None
+    memory_usage: Optional[float] = None
+    memory_total_gb: Optional[float] = None
+    memory_used_gb: Optional[float] = None
+    disk_usage: Optional[float] = None
+    disk_total_gb: Optional[float] = None
+    disk_used_gb: Optional[float] = None
     load_average: Optional[List[float]] = None  # 1, 5, 15 min averages
-    active_connections: int
-    uptime_hours: float
-    status: str  # healthy, degraded, critical
-    psutil_available: bool  # Indicates if real metrics or mock
+    active_connections: Optional[int] = None
+    uptime_hours: Optional[float] = None
+    status: str  # healthy, degraded, critical, unknown
+    psutil_available: bool  # True only when the numbers are real measurements
 
 
 class PipelineNode(BaseModel):
@@ -115,20 +117,37 @@ class PipelineGraphResponse(BaseModel):
     nodes: List[PipelineNode]
     edges: List[PipelineEdge]
     active_pipelines: int
-    queue_length: int
+    # HIC has no execution queue to measure; None instead of the previous
+    # random.randint(0, 5).
+    queue_length: Optional[int] = None
     throughput_per_minute: float
 
 
 class TimeSeriesPoint(BaseModel):
     timestamp: str
-    value: float
+    value: Optional[float] = None  # None = no engine-reported confidence in that hour
 
 
 class ConfidenceTrendResponse(BaseModel):
     engine: str
     data_points: List[TimeSeriesPoint]
-    current_confidence: float
-    trend: str  # stable, rising, falling
+    current_confidence: Optional[float] = None
+    trend: str  # stable, rising, falling, insufficient_data
+    source: str = "engine_reported_confidence"
+
+
+def _reported_confidence(log) -> Optional[float]:
+    """Confidence an engine actually reported for this execution, if any."""
+    output = getattr(log, "output_data", None)
+    if not isinstance(output, dict):
+        return None
+    metadata = output.get("metadata") if isinstance(output.get("metadata"), dict) else {}
+    value = metadata.get("confidence", output.get("confidence"))
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if 0.0 <= value <= 1.0 else None
 
 
 def format_engine_name(engine: str) -> str:
@@ -265,12 +284,8 @@ async def get_drift_status():
     # Get unique engines from logs
     engines = list(set(log.engine for log in logs))
     
-    # If no logs, return default engines
-    if not engines:
-        engines = [
-            "strategy_engine", "plan_builder_engine", "analysis_engine",
-            "money_pipeline_engine", "persona_engine", "pricing_engine"
-        ]
+    # No logs -> no engines to report on. (Previously six default engines were
+    # reported "green / Operating ..." with zero executions behind them.)
     
     result = []
     now = datetime.now(timezone.utc)
@@ -302,9 +317,11 @@ async def get_drift_status():
                 trend = "stable"
                 message = "Operating within normal parameters"
         else:
-            status = "green"
-            trend = "stable"
-            message = "Insufficient data for drift analysis"
+            # Not enough executions to judge. "green" here asserted health that
+            # had not been measured.
+            status = "unknown"
+            trend = "insufficient_data"
+            message = "Insufficient data for drift analysis (fewer than 3 executions in the last hour)"
         
         result.append(DriftAlert(
             engine=engine,
@@ -362,18 +379,10 @@ async def get_system_health():
         
         psutil_available = True
     else:
-        # Mock data fallback
-        cpu = 35 + random.uniform(-10, 15)
-        memory_percent = 45 + random.uniform(-5, 10)
-        memory_total_gb = 16.0
-        memory_used_gb = round(memory_total_gb * memory_percent / 100, 2)
-        disk_percent = 28 + random.uniform(-2, 5)
-        disk_total_gb = 100.0
-        disk_used_gb = round(disk_total_gb * disk_percent / 100, 2)
-        load_average = [1.5, 1.2, 0.9]
-        connections = random.randint(5, 25)
-        uptime_hours = round(random.uniform(24, 720), 1)
-        psutil_available = False
+        # Not measured. Report that, instead of random numbers.
+        result = SystemHealthResponse(status="unknown", psutil_available=False)
+        set_cached("system_health", result)
+        return result
     
     # Determine overall status
     if cpu > 90 or memory_percent > 90 or disk_percent > 95:
@@ -456,7 +465,7 @@ async def get_pipeline_graph():
         nodes=nodes,
         edges=edges,
         active_pipelines=len(set(l.pipeline_id for l in recent_pipeline_logs if l.pipeline_id)),
-        queue_length=random.randint(0, 5),
+        queue_length=None,
         throughput_per_minute=recent_count
     )
     
@@ -474,59 +483,45 @@ async def get_confidence_trends():
     logger = get_logger()
     logs = logger.logs
     
-    # Get unique engines
-    engines = list(set(log.engine for log in logs))[:6]  # Limit to 6 engines
-    
-    if not engines:
-        engines = ["strategy_engine", "analysis_engine", "money_pipeline_engine"]
-    
+    # Only real, engine-reported confidence values are charted. The previous
+    # implementation derived a pseudo-confidence from success rate and added
+    # random.uniform() noise -- and invented 0.85 +/- 0.1 for hours (and for
+    # three default engines) with no data at all.
+    engines = list(dict.fromkeys(log.engine for log in logs))[:6]
+
     result = []
     now = datetime.now(timezone.utc)
-    
+
     for engine in engines:
-        # Generate time series data based on actual logs
         engine_logs = [l for l in logs if l.engine == engine]
-        
+
         data_points = []
         for i in range(12):  # Last 12 hours
             hour_time = now - timedelta(hours=11-i)
-            
-            # Calculate confidence from success rate in that hour window
-            hour_logs = [
-                l for l in engine_logs 
-                if abs((datetime.fromisoformat(l.timestamp.replace('Z', '+00:00')) - hour_time).total_seconds()) < 1800
-            ]
-            
-            if hour_logs:
-                success_rate = sum(1 for l in hour_logs if l.status == "success") / len(hour_logs)
-                confidence = 0.7 + (success_rate * 0.25) + random.uniform(-0.05, 0.05)
-            else:
-                confidence = 0.85 + random.uniform(-0.1, 0.1)
-            
+            values = []
+            for l in engine_logs:
+                if abs((datetime.fromisoformat(l.timestamp.replace('Z', '+00:00')) - hour_time).total_seconds()) >= 1800:
+                    continue
+                confidence = _reported_confidence(l)
+                if confidence is not None:
+                    values.append(confidence)
             data_points.append(TimeSeriesPoint(
                 timestamp=hour_time.isoformat(),
-                value=round(min(1.0, max(0.5, confidence)), 3)
+                value=round(sum(values) / len(values), 3) if values else None,
             ))
-        
-        # Determine trend
-        if len(data_points) >= 3:
-            recent_avg = sum(p.value for p in data_points[-3:]) / 3
-            older_avg = sum(p.value for p in data_points[:3]) / 3
-            
-            if recent_avg > older_avg + 0.05:
-                trend = "rising"
-            elif recent_avg < older_avg - 0.05:
-                trend = "falling"
-            else:
-                trend = "stable"
+
+        measured = [p.value for p in data_points if p.value is not None]
+        if len(measured) >= 2:
+            delta = measured[-1] - measured[0]
+            trend = "rising" if delta > 0.05 else "falling" if delta < -0.05 else "stable"
         else:
-            trend = "stable"
-        
+            trend = "insufficient_data"
+
         result.append(ConfidenceTrendResponse(
             engine=engine,
             data_points=data_points,
-            current_confidence=data_points[-1].value if data_points else 0.85,
-            trend=trend
+            current_confidence=measured[-1] if measured else None,
+            trend=trend,
         ))
     
     set_cached("confidence_trends", result)
@@ -535,9 +530,14 @@ async def get_confidence_trends():
 
 @router.get("/model-comparison")
 async def get_model_comparison():
-    """Get model version comparison data."""
-    # Static model comparison data
+    """Reference model catalogue.
+
+    These latency / throughput / cost figures are static reference values, not
+    measurements from HIC executions -- the response says so explicitly.
+    """
     return {
+        "source": "static_reference_not_measured",
+        "measured": False,
         "models": [
             {
                 "name": "GPT-5.2",
@@ -564,7 +564,10 @@ async def get_model_comparison():
                 "avg_latency_ms": 1800,
                 "tokens_per_second": 200,
                 "cost_per_1k_tokens": 0.01,
-                "primary_use": "Quick tasks"
+                "primary_use": "Quick tasks",
+                "available": False,
+                "blocked_by_policy": True,
+                "policy_note": "Google/Gemini models are blocked by the Empire-1 HIC model policy."
             }
         ]
     }
@@ -595,9 +598,9 @@ async def get_realtime_stats():
         elif cpu > 70 or memory > 75:
             system_status = "degraded"
     else:
-        cpu = round(35 + random.uniform(-10, 15), 1)
-        memory = round(45 + random.uniform(-5, 10), 1)
-        system_status = "healthy"
+        cpu = None
+        memory = None
+        system_status = "unknown"
     
     return {
         "timestamp": now.isoformat(),
@@ -612,8 +615,8 @@ async def get_realtime_stats():
         },
         "active_engines": len(stats.get("engines", {})),
         "system": {
-            "cpu": round(cpu, 1),
-            "memory": round(memory, 1),
+            "cpu": round(cpu, 1) if cpu is not None else None,
+            "memory": round(memory, 1) if memory is not None else None,
             "status": system_status,
             "psutil_available": PSUTIL_AVAILABLE
         }
@@ -695,20 +698,7 @@ def get_system_health_data() -> dict:
             "psutil_available": True
         }
     else:
-        return {
-            "cpu_usage": round(35 + random.uniform(-10, 15), 1),
-            "memory_usage": round(45 + random.uniform(-5, 10), 1),
-            "memory_total_gb": 16.0,
-            "memory_used_gb": 7.33,
-            "disk_usage": round(28 + random.uniform(-2, 5), 1),
-            "disk_total_gb": 100.0,
-            "disk_used_gb": 28.0,
-            "load_average": [1.5, 1.2, 0.9],
-            "active_connections": random.randint(5, 25),
-            "uptime_hours": round(random.uniform(24, 720), 1),
-            "status": "healthy",
-            "psutil_available": False
-        }
+        return SystemHealthResponse(status="unknown", psutil_available=False).model_dump()
 
 
 def get_realtime_stats_data() -> dict:
@@ -728,9 +718,9 @@ def get_realtime_stats_data() -> dict:
         memory = psutil.virtual_memory().percent
         system_status = "critical" if cpu > 90 or memory > 90 else "degraded" if cpu > 70 or memory > 75 else "healthy"
     else:
-        cpu = round(35 + random.uniform(-10, 15), 1)
-        memory = round(45 + random.uniform(-5, 10), 1)
-        system_status = "healthy"
+        cpu = None
+        memory = None
+        system_status = "unknown"
     
     return {
         "timestamp": now.isoformat(),
@@ -745,8 +735,8 @@ def get_realtime_stats_data() -> dict:
         },
         "active_engines": len(stats.get("engines", {})),
         "system": {
-            "cpu": round(cpu, 1),
-            "memory": round(memory, 1),
+            "cpu": round(cpu, 1) if cpu is not None else None,
+            "memory": round(memory, 1) if memory is not None else None,
             "status": system_status,
             "psutil_available": PSUTIL_AVAILABLE
         }

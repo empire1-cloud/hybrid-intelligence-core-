@@ -55,7 +55,9 @@ jobs:
             stripe==15.0.1 \
             uvicorn==0.44.0 \
             websockets==16.0 \
-            pytest
+            pytest \
+            mongomock==4.3.0 \
+            mongomock-motor==0.0.36
 
       - name: Provide emergentintegrations from the vendored copy
         # emergentintegrations is not on PyPI. The repo carries a self-declared
@@ -77,6 +79,30 @@ jobs:
 
       - name: Run Startup Copilot contract tests
         run: python -m pytest -q tests/test_startup_copilot_contract.py
+
+      - name: Run canon, honesty and routing contract tests
+        # These existed and passed locally but CI never ran them.
+        run: |
+          python -m pytest -q \
+            tests/test_canon_contract.py \
+            tests/test_canon_orchestrator.py \
+            tests/test_canon_router_wiring.py \
+            tests/test_canon_routing.py \
+            tests/test_engine_output_honesty.py \
+            tests/test_tri_model_execution.py \
+            tests/test_empire_intake.py
+
+      - name: Run audit hardening regression tests
+        # Model policy in every engine, no fabricated output, secret redaction,
+        # SLA113 operator guard, SSRF/path checks, JWT/CORS config, Stripe
+        # webhook verification + idempotency, atomic usage metering, tenant
+        # isolation, and no synthetic analytics. No network, no live Mongo.
+        run: python -m pytest -q tests/test_audit_hardening.py
+
+      - name: Run end-to-end customer journey (in-memory Mongo, stubbed LLM)
+        # Real routes/middleware/dependencies. Does NOT prove real Mongo,
+        # provider calls, or multi-worker behaviour -- see the file docstring.
+        run: python -m pytest -q tests/test_e2e_customer_journey.py
 
   requirements-resolve:
     # requirements.txt was unresolvable for a long time: it pinned

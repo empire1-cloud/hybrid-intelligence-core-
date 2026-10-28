@@ -420,9 +420,9 @@ const AnalyticsPage = () => {
             e.error_rate,
           ]),
           ...driftStatus.map((d) => ["Drift", d.engine, "status", d.status]),
-          ["System", "CPU", "usage", systemHealth?.cpu_usage || 0],
-          ["System", "Memory", "usage", systemHealth?.memory_usage || 0],
-          ["System", "Disk", "usage", systemHealth?.disk_usage || 0],
+          ["System", "CPU", "usage", systemHealth?.cpu_usage ?? ""],
+          ["System", "Memory", "usage", systemHealth?.memory_usage ?? ""],
+          ["System", "Disk", "usage", systemHealth?.disk_usage ?? ""],
         ];
         content = csvRows.map((r) => r.join(",")).join("\n");
         filename = `analytics-export-${Date.now()}.csv`;
@@ -485,15 +485,16 @@ const AnalyticsPage = () => {
     status,
     prevValue,
   }) => {
-    const percentage = (value / max) * 100;
+    const measured = typeof value === "number" && !Number.isNaN(value);
+    const percentage = measured ? (value / max) * 100 : 0;
     const getColor = () => {
       if (percentage > 80) return COLORS.red;
       if (percentage > 60) return COLORS.orange;
       return COLORS.green;
     };
 
-    const isIncreasing = prevValue !== null && value > prevValue;
-    const isDecreasing = prevValue !== null && value < prevValue;
+    const isIncreasing = measured && prevValue != null && value > prevValue;
+    const isDecreasing = measured && prevValue != null && value < prevValue;
 
     return (
       <div
@@ -526,9 +527,9 @@ const AnalyticsPage = () => {
             <span
               className={`gauge-number ${isIncreasing ? "flash-up" : ""} ${isDecreasing ? "flash-down" : ""}`}
             >
-              {value?.toFixed(1)}
+              {measured ? value.toFixed(1) : "—"}
             </span>
-            <span className="gauge-unit">{unit}</span>
+            {measured && <span className="gauge-unit">{unit}</span>}
           </div>
         </div>
       </div>
@@ -1173,7 +1174,7 @@ const AnalyticsPage = () => {
               >
                 {systemHealth?.psutil_available
                   ? "🟢 Real Metrics (psutil)"
-                  : "🟡 Mock Metrics (psutil unavailable)"}
+                  : "⚪ System metrics unavailable (not measured)"}
               </span>
               <span className={`connection-type ${connectionType}`}>
                 {connectionType === "websocket"
@@ -1187,19 +1188,19 @@ const AnalyticsPage = () => {
               <div className="gauges-row">
                 <GaugeCard
                   label="CPU Usage"
-                  value={systemHealth?.cpu_usage || 0}
+                  value={systemHealth?.cpu_usage ?? null}
                   status={systemHealth?.status}
                   prevValue={prevHealth?.cpu_usage}
                 />
                 <GaugeCard
                   label="Memory"
-                  value={systemHealth?.memory_usage || 0}
+                  value={systemHealth?.memory_usage ?? null}
                   status={systemHealth?.status}
                   prevValue={prevHealth?.memory_usage}
                 />
                 <GaugeCard
                   label="Disk"
-                  value={systemHealth?.disk_usage || 0}
+                  value={systemHealth?.disk_usage ?? null}
                   status={systemHealth?.status}
                   prevValue={prevHealth?.disk_usage}
                 />
@@ -1218,19 +1219,19 @@ const AnalyticsPage = () => {
                     <div className="stat-row">
                       <span className="stat-key">Total:</span>
                       <span className="stat-val">
-                        {systemHealth?.memory_total_gb || 0} GB
+                        {systemHealth?.memory_total_gb ?? "—"} GB
                       </span>
                     </div>
                     <div className="stat-row">
                       <span className="stat-key">Used:</span>
                       <span className="stat-val">
-                        {systemHealth?.memory_used_gb || 0} GB
+                        {systemHealth?.memory_used_gb ?? "—"} GB
                       </span>
                     </div>
                     <div className="stat-row">
                       <span className="stat-key">Usage:</span>
                       <span className="stat-val highlight">
-                        {systemHealth?.memory_usage || 0}%
+                        {systemHealth?.memory_usage ?? "—"}%
                       </span>
                     </div>
                   </div>
@@ -1244,19 +1245,19 @@ const AnalyticsPage = () => {
                     <div className="stat-row">
                       <span className="stat-key">Total:</span>
                       <span className="stat-val">
-                        {systemHealth?.disk_total_gb || 0} GB
+                        {systemHealth?.disk_total_gb ?? "—"} GB
                       </span>
                     </div>
                     <div className="stat-row">
                       <span className="stat-key">Used:</span>
                       <span className="stat-val">
-                        {systemHealth?.disk_used_gb || 0} GB
+                        {systemHealth?.disk_used_gb ?? "—"} GB
                       </span>
                     </div>
                     <div className="stat-row">
                       <span className="stat-key">Usage:</span>
                       <span className="stat-val highlight">
-                        {systemHealth?.disk_usage || 0}%
+                        {systemHealth?.disk_usage ?? "—"}%
                       </span>
                     </div>
                   </div>
@@ -1305,7 +1306,7 @@ const AnalyticsPage = () => {
                   <div className="system-stat-icon">🔗</div>
                   <div className="system-stat-content">
                     <span className="system-stat-value animate-value">
-                      {systemHealth?.active_connections || 0}
+                      {systemHealth?.active_connections ?? "—"}
                     </span>
                     <span className="system-stat-label">
                       Active Connections
@@ -1316,7 +1317,7 @@ const AnalyticsPage = () => {
                   <div className="system-stat-icon">⏰</div>
                   <div className="system-stat-content">
                     <span className="system-stat-value animate-value">
-                      {systemHealth?.uptime_hours?.toFixed(1) || 0}h
+                      {systemHealth?.uptime_hours != null ? `${systemHealth.uptime_hours.toFixed(1)}h` : "—"}
                     </span>
                     <span className="system-stat-label">Uptime</span>
                   </div>
@@ -1356,7 +1357,7 @@ const AnalyticsPage = () => {
                     </div>
                     <div className="pipeline-stat">
                       <span className="pipeline-stat-value">
-                        {pipelineGraph?.queue_length || 0}
+                        {pipelineGraph?.queue_length ?? "n/a"}
                       </span>
                       <span className="pipeline-stat-label">Queue Length</span>
                     </div>

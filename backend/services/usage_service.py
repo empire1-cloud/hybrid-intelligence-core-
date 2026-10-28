@@ -36,6 +36,7 @@ async def get_current_period_start() -> datetime:
 
 async def get_team_usage(team_id: str) -> Dict:
     """Get current usage for a team."""
+    await ensure_current_period(team_id)
     team = await teams_collection().find_one({"_id": ObjectId(team_id)})
     
     if not team:
@@ -107,6 +108,98 @@ async def get_team_usage_with_limits(team_id: str) -> Dict:
     }
 
 
+async def ensure_current_period(team_id: str) -> None:
+    """Atomically roll the team's counters into the current month.
+
+    Audit finding (Oct 2026): ``usage.period_start`` was only ever written by a
+    ``$setOnInsert`` on an update that never upserts, and no team-creation path
+    sets it. With no period_start the monthly reset never ran, so execution
+    counts accumulated for the lifetime of the team -- a Free team was locked
+    out for good after 100 executions. A team with no period_start, or one
+    from an earlier month, is reset here. The filter makes concurrent callers
+    reset at most once.
+    """
+    period_start = await get_current_period_start()
+    await teams_collection().update_one(
+        {
+            "_id": ObjectId(team_id),
+            "$or": [
+                {"usage.period_start": {"$exists": False}},
+                {"usage.period_start": None},
+                {"usage.period_start": {"$lt": period_start}},
+            ],
+        },
+        {"$set": {
+            "usage.executions_count": 0,
+            "usage.tokens_used": 0,
+            "usage.api_calls_count": 0,
+            "usage.period_start": period_start,
+            "usage.updated_at": datetime.now(timezone.utc),
+        }},
+    )
+
+
+async def reserve_execution(team_id: str, amount: int = 1) -> bool:
+    """Atomically claim ``amount`` executions against the monthly allowance.
+
+    Replaces check-then-increment. Previously the limit was read before the
+    model call and the counter incremented after it, so N concurrent requests
+    all passed the same check and a team could exceed its plan by the level
+    of concurrency. Here the increment and the limit test are one document
+    update, so the counter can never pass the limit.
+
+    Returns True when a slot was reserved (caller must ``release_execution`` if
+    the execution then fails), False when the team record does not exist (the
+    previous behaviour for that case was also to allow).
+    Raises UsageLimitError when the allowance is exhausted.
+    """
+    oid = ObjectId(team_id)
+    team = await teams_collection().find_one({"_id": oid}, {"billing.plan": 1})
+    if not team:
+        return False
+
+    await ensure_current_period(team_id)
+    plan = team.get("billing", {}).get("plan", "free")
+    limit = get_plan_limits(plan).get("executions_per_month", 100)
+    now = datetime.now(timezone.utc)
+
+    if limit == -1:
+        await teams_collection().update_one(
+            {"_id": oid},
+            {"$inc": {"usage.executions_count": amount}, "$set": {"usage.updated_at": now}},
+        )
+        return True
+
+    result = await teams_collection().update_one(
+        {
+            "_id": oid,
+            "$or": [
+                {"usage.executions_count": {"$exists": False}},
+                {"usage.executions_count": {"$lte": limit - amount}},
+            ],
+        },
+        {"$inc": {"usage.executions_count": amount}, "$set": {"usage.updated_at": now}},
+    )
+    if result.modified_count == 0:
+        current = (await get_team_usage(team_id)).get("executions_count", 0)
+        raise UsageLimitError(
+            f"Monthly execution limit reached ({current}/{limit}). Please upgrade your plan.",
+            limit_type="executions",
+            current=current,
+            limit=limit,
+        )
+    return True
+
+
+async def release_execution(team_id: str, amount: int = 1) -> None:
+    """Return a reserved slot after a failed execution (never below zero)."""
+    await teams_collection().update_one(
+        {"_id": ObjectId(team_id), "usage.executions_count": {"$gte": amount}},
+        {"$inc": {"usage.executions_count": -amount},
+         "$set": {"usage.updated_at": datetime.now(timezone.utc)}},
+    )
+
+
 async def reset_team_usage(team_id: str):
     """Reset usage counters for a team (new billing period)."""
     period_start = await get_current_period_start()
@@ -134,17 +227,7 @@ async def increment_usage(
     period_start = await get_current_period_start()
     
     # First, ensure we're in the current period
-    team = await teams_collection().find_one({"_id": ObjectId(team_id)})
-    if team:
-        usage = team.get("usage", {})
-        last_reset = usage.get("period_start")
-        
-        if last_reset and isinstance(last_reset, datetime):
-            if last_reset.tzinfo is None:
-                last_reset = last_reset.replace(tzinfo=timezone.utc)
-            
-            if last_reset < period_start:
-                await reset_team_usage(team_id)
+    await ensure_current_period(team_id)
     
     # Increment counters
     update = {
@@ -152,9 +235,6 @@ async def increment_usage(
         "$set": {
             "usage.updated_at": now,
         },
-        "$setOnInsert": {
-            "usage.period_start": period_start,
-        }
     }
     
     if executions > 0:
@@ -163,7 +243,12 @@ async def increment_usage(
         update["$inc"]["usage.tokens_used"] = tokens
     if api_calls > 0:
         update["$inc"]["usage.api_calls_count"] = api_calls
-    
+
+    if not update["$inc"]:
+        # MongoDB rejects an empty $inc; nothing to count (e.g. a reserved
+        # JWT execution where only the timestamp would change).
+        del update["$inc"]
+
     await teams_collection().update_one(
         {"_id": ObjectId(team_id)},
         update,

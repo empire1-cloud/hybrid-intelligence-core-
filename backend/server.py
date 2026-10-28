@@ -18,6 +18,7 @@ from routers.sla113 import seed_default_pipelines, seed_default_lobbies, start_w
 from routers.empire1 import router as empire1_router, seed_ecosystem
 from routers.empire_intake import router as empire_intake_router
 from core.engine_context import enforce_engine_subscription
+from core.operator_guard import sla113_operator_guard
 
 
 @asynccontextmanager
@@ -129,7 +130,9 @@ api_router.include_router(discovery_router)
 
 # SLA113 is Empire-1's deeper tenant, policy, operator, and product-factory layer.
 # It remains commercially distinct without being separated from the Empire-1 parent.
-api_router.include_router(sla113_router)
+# Reads stay public (Arcade / Showcase depend on them); writes, paid LLM calls
+# and tenant credit/RTP data require an operator -- see core/operator_guard.py.
+api_router.include_router(sla113_router, dependencies=[Depends(sla113_operator_guard)])
 
 # Startup Copilot: 12 founder skills for idea validation through scaling
 # Includes chained workflows for multi-skill founder guidance
@@ -184,15 +187,32 @@ async def get_status_checks():
 
 
 app.include_router(api_router)
+
+
+# Every HTTPException detail passes through secret redaction before it leaves
+# the process. 35 routes return ``detail=str(e)``, and provider exceptions can
+# embed the API key in the request URL (observed in the committed
+# execution_logs.json). One choke point instead of 35 call-site edits.
+from fastapi import HTTPException as _FastAPIHTTPException
+from fastapi.exception_handlers import http_exception_handler as _default_http_exception_handler
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+from services.secret_redaction import redact_obj as _redact_obj
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def _redacting_http_exception_handler(request, exc):
+    safe = _FastAPIHTTPException(
+        status_code=exc.status_code,
+        detail=_redact_obj(exc.detail),
+        headers=getattr(exc, "headers", None),
+    )
+    return await _default_http_exception_handler(request, safe)
 app.include_router(empire1_router)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from core.cors_config import resolve_cors_settings
+
+# Never pairs a wildcard origin with credentials -- see core/cors_config.py.
+app.add_middleware(CORSMiddleware, **resolve_cors_settings())
 
 from middleware.model_policy_middleware import ModelPolicyMiddleware
 from middleware.subscription_usage_middleware import SubscriptionUsageMiddleware

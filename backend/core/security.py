@@ -2,6 +2,7 @@
 Core security utilities: password hashing, JWT tokens, etc.
 """
 
+import logging
 import os
 import secrets
 import hashlib
@@ -12,8 +13,47 @@ import jwt
 from pydantic import BaseModel
 
 
+PRODUCTION_ENV_NAMES = {"production", "prod"}
+MIN_JWT_SECRET_LENGTH = 32
+
+
+def is_production() -> bool:
+    """True when APP_ENV names a production deployment."""
+    return os.environ.get("APP_ENV", "development").strip().lower() in PRODUCTION_ENV_NAMES
+
+
+def _load_jwt_secret() -> str:
+    """Return the configured JWT secret, failing closed in production.
+
+    The previous behaviour generated a random secret whenever JWT_SECRET_KEY
+    was missing. Under the shipped systemd unit (4 gunicorn workers, recycled
+    every 1000 requests) every worker invented its own secret, so a token
+    signed by one worker was rejected by the other three and every session
+    died on recycle. Production now refuses to start instead.
+    """
+    secret = os.environ.get("JWT_SECRET_KEY", "").strip()
+    if secret:
+        if is_production() and len(secret) < MIN_JWT_SECRET_LENGTH:
+            raise RuntimeError(
+                f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_LENGTH} characters in production."
+            )
+        return secret
+
+    if is_production():
+        raise RuntimeError(
+            "JWT_SECRET_KEY is not set. Refusing to start in production with an "
+            "ephemeral per-process signing key."
+        )
+
+    logging.getLogger(__name__).warning(
+        "JWT_SECRET_KEY not set; using an ephemeral development key. Tokens will "
+        "not survive a restart and are not shared across workers."
+    )
+    return secrets.token_urlsafe(32)
+
+
 # JWT Configuration
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", secrets.token_urlsafe(32))
+JWT_SECRET_KEY = _load_jwt_secret()
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7

@@ -14,6 +14,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 
 from services.engine_errors import EngineOutputError
+from services.model_policy import resolve_engine_model
 
 load_dotenv()
 
@@ -74,7 +75,7 @@ Return ONLY the JSON object. No other text."""
     def _create_chat(cls, model: str = None) -> LlmChat:
         model = model or cls.DEFAULT_MODEL
         api_key = cls._get_api_key()
-        provider, model_name = cls.MODEL_CONFIG.get(model, cls.MODEL_CONFIG[cls.DEFAULT_MODEL])
+        model, provider, model_name = resolve_engine_model(model, cls.MODEL_CONFIG, cls.DEFAULT_MODEL)
         
         chat = LlmChat(
             api_key=api_key,

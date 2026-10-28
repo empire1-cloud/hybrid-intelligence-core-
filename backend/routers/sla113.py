@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 import uuid
 import logging
 import os
+
+from services.secret_redaction import redact_secrets
 import re
 import json
 import asyncio
@@ -33,6 +35,16 @@ from sla113.fish_multiplayer import create_lobby, get_lobby, list_lobbies, delet
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sla113", tags=["sla113"])
+
+SPRITE_PROXY_MAX_BYTES = 10 * 1024 * 1024
+
+# Deploy output root, relative to this backend checkout (== /app/backend/static/deploys
+# in the container). Previously hardcoded to /app, which does not exist under the
+# shipped systemd deploy at /var/www/hybrid-intelligence/backend.
+SLA113_DEPLOY_ROOT = os.environ.get(
+    "SLA113_DEPLOY_ROOT",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "deploys"),
+)
 
 # In-memory session store for terminal conversations
 _terminal_sessions = {}
@@ -281,7 +293,7 @@ async def generate_vision(req: VisionGenerateRequest):
 
     except Exception as e:
         logger.error(f"Vision generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Vision generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Vision generation failed: {redact_secrets(str(e))}")
 
 
 # ─── Logic Engine ───
@@ -311,7 +323,7 @@ async def generate_game_logic(req: LogicGenerateRequest):
 
     except Exception as e:
         logger.error(f"Logic generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Logic generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Logic generation failed: {redact_secrets(str(e))}")
 
 
 # ─── Composer Engine ───
@@ -341,7 +353,7 @@ async def compose_game(req: ComposeRequest):
 
     except Exception as e:
         logger.error(f"Composition failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Composition failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Composition failed: {redact_secrets(str(e))}")
 
 
 # ─── Quick Stats ───
@@ -430,7 +442,7 @@ RULES:
         return {"response": response, "session_id": session_id}
     except Exception as e:
         logger.error(f"Terminal error: {e}")
-        return {"response": f"> [ERROR] Overseer fault: {str(e)}", "session_id": session_id}
+        return {"response": f"> [ERROR] Overseer fault: {redact_secrets(str(e))}", "session_id": session_id}
 
 
 # ─── Collections ───
@@ -510,9 +522,27 @@ STYLE_PROMPTS = {
 
 @router.post("/vision/generate-image")
 async def generate_image(req: ImageGenRequest):
-    """Generate AAA-quality game art assets using Gemini 3 Pro Image Generation."""
+    """Generate AAA-quality game art assets using Gemini 3 Pro Image Generation.
+
+    Model policy: HIC's policy (services/model_policy.py) blocks Google/Gemini.
+    This route called Gemini directly and was reachable anonymously. It now fails
+    closed unless the founder explicitly records a policy exception by setting
+    SLA113_GEMINI_IMAGE_EXCEPTION=enabled. The implementation is preserved
+    (WE EVOLVE, NEVER DELETE); only dispatch is gated.
+    """
     import base64
     from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    if os.environ.get("SLA113_GEMINI_IMAGE_EXCEPTION", "").strip().lower() != "enabled":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "MODEL_POLICY_BLOCKED",
+                "message": "Image generation uses a Google/Gemini model, which the Empire-1 "
+                           "model policy blocks. An operator can enable a recorded exception "
+                           "with SLA113_GEMINI_IMAGE_EXCEPTION=enabled.",
+            },
+        )
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_key:
@@ -548,8 +578,10 @@ async def generate_image(req: ImageGenRequest):
 
         raise HTTPException(status_code=500, detail="No image generated")
     except Exception as e:
-        logger.error(f"Gemini image generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise
+        logger.error("Gemini image generation failed: %s", redact_secrets(str(e)))
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {redact_secrets(str(e))}")
 
 
 @router.get("/vision/styles")
@@ -1601,9 +1633,9 @@ async def compile_build(build_id: str):
         await builds_collection().update_one(
             {"id": build_id},
             {"$set": {"status": "failed", "updated_at": datetime.now(timezone.utc).isoformat()},
-             "$push": {"logs": f"[{datetime.now(timezone.utc).isoformat()}] BUILD FAILED: {str(e)}"}}
+             "$push": {"logs": f"[{datetime.now(timezone.utc).isoformat()}] BUILD FAILED: {redact_secrets(str(e))}"}}
         )
-        raise HTTPException(status_code=500, detail=f"Build failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Build failed: {redact_secrets(str(e))}")
 
 
 @router.get("/builds/{build_id}/download")
@@ -1853,7 +1885,7 @@ async def auto_certify(req: AutoCertifyRequest):
             steps[-1]["detail"] = f"Logic Engine type={spec_type} generated successfully ({result.get('generation_time', '?')}s)"
         except Exception as e:
             steps[-1]["status"] = "error"
-            steps[-1]["detail"] = f"Failed to generate {spec_type}: {str(e)}"
+            steps[-1]["detail"] = f"Failed to generate {spec_type}: {redact_secrets(str(e))}"
             logger.error(f"Auto-certify {spec_type} generation failed: {e}")
 
     # Now run the real compliance check
@@ -1931,7 +1963,7 @@ async def auto_certify(req: AutoCertifyRequest):
 
     except Exception as e:
         steps[-1]["status"] = "error"
-        steps[-1]["detail"] = f"Compliance check failed: {str(e)}"
+        steps[-1]["detail"] = f"Compliance check failed: {redact_secrets(str(e))}"
         report = None
 
     return {
@@ -1962,7 +1994,7 @@ async def deploy_build(req: DeployRequest):
 
     now = datetime.now(timezone.utc).isoformat()
     deploy_id = f"DPL-{uuid.uuid4().hex[:8].upper()}"
-    deploy_dir = f"/app/backend/static/deploys/{deploy_id}"
+    deploy_dir = os.path.join(SLA113_DEPLOY_ROOT, deploy_id)
 
     deployment = {
         "id": deploy_id,
@@ -2013,7 +2045,7 @@ async def deploy_build(req: DeployRequest):
     except Exception as e:
         logger.error(f"Deploy extraction failed: {e}")
         deployment["status"] = "failed"
-        deployment["logs"].append(f"[{now}] FAILED: {str(e)}")
+        deployment["logs"].append(f"[{now}] FAILED: {redact_secrets(str(e))}")
 
     await deployments_collection().insert_one(deployment)
     deployment.pop("_id", None)
@@ -2052,7 +2084,7 @@ async def delete_deployment(deploy_id: str):
     """Delete deployment and clean up static files."""
     import shutil
     deploy = await deployments_collection().find_one({"id": deploy_id}, {"_id": 0})
-    deploy_dir = f"/app/backend/static/deploys/{deploy_id}"
+    deploy_dir = os.path.join(SLA113_DEPLOY_ROOT, deploy_id)
     if os.path.exists(deploy_dir):
         shutil.rmtree(deploy_dir, ignore_errors=True)
     result = await deployments_collection().delete_one({"id": deploy_id})
@@ -2073,9 +2105,11 @@ async def serve_live_game(deploy_id: str, file_path: str):
         raise HTTPException(status_code=400, detail="Invalid deploy ID format")
 
     # Security: prevent path traversal
-    base_dir = os.path.realpath("/app/backend/static/deploys")
-    full_path = os.path.realpath(os.path.join(base_dir, deploy_id, file_path))
-    if not full_path.startswith(base_dir):
+    base_dir = os.path.realpath(os.path.join(SLA113_DEPLOY_ROOT, deploy_id))
+    full_path = os.path.realpath(os.path.join(base_dir, file_path))
+    # commonpath (not str.startswith) so a sibling such as "DPL-X_evil" can never
+    # satisfy a bare prefix comparison.
+    if os.path.commonpath([base_dir, full_path]) != base_dir:
         raise HTTPException(status_code=403, detail="Access denied")
 
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
@@ -2123,7 +2157,7 @@ async def generate_audio(req: AudioForgeRequest):
         return result
     except Exception as e:
         logger.error(f"Audio generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Audio generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Audio generation failed: {redact_secrets(str(e))}")
 
 
 @router.get("/audio/assets")
@@ -2318,17 +2352,33 @@ async def proxy_sprite(url: str):
     """Proxy external sprite images to bypass CORS restrictions."""
     import httpx
     from fastapi.responses import Response
-    if not url.startswith("https://"):
-        raise HTTPException(status_code=400, detail="Only HTTPS URLs allowed")
+    from core.url_safety import assert_public_https_url, UnsafeURLError
+
+    # Public (the Arcade uses it) and previously an open fetcher for any HTTPS
+    # host, including internal addresses (SSRF). Now: public hosts only, images
+    # only, size-capped, no redirects.
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url)
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail="Upstream error")
-            ct = resp.headers.get("content-type", "image/jpeg")
-            return Response(content=resp.content, media_type=ct, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"})
+        assert_public_https_url(url)
+    except UnsafeURLError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            async with client.stream("GET", url) as resp:
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=502, detail="Upstream error")
+                ct = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if not ct.startswith("image/"):
+                    raise HTTPException(status_code=415, detail="Upstream is not an image")
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > SPRITE_PROXY_MAX_BYTES:
+                        raise HTTPException(status_code=413, detail="Image too large")
+            return Response(content=bytes(body), media_type=ct, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"})
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=f"Upstream fetch failed: {redact_secrets(str(e))}")
 
 
 # ─── Sprite Asset Registry ───
