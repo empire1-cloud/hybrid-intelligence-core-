@@ -724,3 +724,37 @@ def test_model_comparison_is_labelled_static_and_gemini_unavailable():
     assert data["measured"] is False
     gemini = [m for m in data["models"] if m["provider"] == "Google"]
     assert gemini and all(m["available"] is False for m in gemini)
+
+
+def test_reservation_is_released_when_the_engine_raises(monkeypatch):
+    """Codex review on PR #18: if a route lets an exception escape,
+    BaseHTTPMiddleware's call_next re-raises, so a release placed only on the
+    >=400 response path never runs and the reserved slot leaks."""
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+    from middleware import subscription_usage_middleware as mw
+
+    released = []
+
+    async def _release(team_id, amount=1):
+        released.append((team_id, amount))
+
+    monkeypatch.setattr(mw, "release_execution", _release)
+
+    class _Ctx:
+        team_id = "team-x"
+        actor_type = "user"
+
+    app = FastAPI()
+    app.add_middleware(mw.SubscriptionUsageMiddleware)
+
+    @app.post("/boom")
+    async def _boom(request: Request):
+        request.state.engine_context = _Ctx()
+        request.state.hic_execution_pending = True
+        request.state.hic_execution_reserved = True
+        raise RuntimeError("engine blew up")
+
+    resp = TestClient(app, raise_server_exceptions=False).post("/boom")
+    assert resp.status_code == 500
+    assert released == [("team-x", 1)]
