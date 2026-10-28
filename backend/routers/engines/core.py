@@ -2,15 +2,20 @@
 Core and Health endpoints for the Hybrid Intelligence system.
 """
 from datetime import datetime, timezone
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
-from services.hybrid_core import get_core, TaskType
+from services.hybrid_core import get_core, TaskType, CURRENT_TEAM_ID
 
 
 router = APIRouter(tags=["core"])
+
+
+def _team_id(request: Request):
+    context = getattr(request.state, "engine_context", None)
+    return getattr(context, "team_id", None)
 
 
 class CoreRequest(BaseModel):
@@ -30,9 +35,10 @@ class CoreResponse(BaseModel):
 
 
 @router.post("/core/execute", response_model=CoreResponse)
-async def core_execute(payload: CoreRequest):
+async def core_execute(payload: CoreRequest, request: Request):
     """Execute through the complete HIC routing and governance pipeline."""
     core = get_core()
+    CURRENT_TEAM_ID.set(_team_id(request))
 
     task_type = None
     if payload.task_type:
@@ -62,9 +68,10 @@ async def core_execute(payload: CoreRequest):
 
 
 @router.post("/core/strategy-to-plan", response_model=CoreResponse)
-async def core_strategy_to_plan(payload: CoreRequest):
+async def core_strategy_to_plan(payload: CoreRequest, request: Request):
     """Execute the strategy-to-plan pipeline through HIC."""
     core = get_core()
+    CURRENT_TEAM_ID.set(_team_id(request))
 
     result = await core.execute_strategy_to_plan(
         goal=payload.prompt,
@@ -93,12 +100,18 @@ async def core_status():
 
 
 @router.get("/core/log")
-async def core_execution_log(limit: int = 50):
-    """Get recent execution log from the Core."""
+async def core_execution_log(request: Request, limit: int = 50):
+    """Get recent execution log entries for the caller's team only."""
     core = get_core()
+    team_id = _team_id(request)
+    if team_id is None:
+        # The engine dependency always sets a context for this route; refuse
+        # rather than fall back to the unscoped, all-tenant log.
+        return JSONResponse(status_code=401, content={"detail": "Team context required"})
+    entries = core.get_execution_log(limit, team_id=team_id)
     return {
-        "log": core.get_execution_log(limit),
-        "total_executions": len(core.execution_log)
+        "log": entries,
+        "total_executions": len(core.get_execution_log(len(core.execution_log) or 1, team_id=team_id)),
     }
 
 

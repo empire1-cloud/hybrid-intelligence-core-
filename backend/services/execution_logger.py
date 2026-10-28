@@ -6,14 +6,22 @@ Stores logs in memory with optional file persistence.
 """
 
 import os
+from pathlib import Path
 import json
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from threading import Lock
 import asyncio
+from services.secret_redaction import redact_obj, redact_secrets
 
-LOG_FILE = "/app/backend/execution_logs.json"
+# Resolved relative to this backend checkout (== /app/backend/... in the
+# container) instead of a hardcoded /app path, which does not exist under the
+# shipped systemd deploy (/var/www/hybrid-intelligence/backend).
+LOG_FILE = os.environ.get(
+    "HIC_EXECUTION_LOG_FILE",
+    str(Path(__file__).resolve().parent.parent / "execution_logs.json"),
+)
 MAX_LOGS = 1000  # Keep last 1000 logs in memory
 
 
@@ -90,9 +98,9 @@ class ExecutionLogger:
             engine=engine,
             endpoint=endpoint,
             method=method,
-            input_data=input_data,
-            output_data=output_data,
-            error=error,
+            input_data=redact_obj(input_data),
+            output_data=redact_obj(output_data),
+            error=redact_secrets(error),
             duration_ms=duration_ms,
             status="success" if error is None else "error",
             source=source,

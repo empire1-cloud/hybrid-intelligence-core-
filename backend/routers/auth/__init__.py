@@ -5,6 +5,15 @@ Handles signup, login, token refresh, logout, password management, and OAuth.
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import RedirectResponse
+
+from core.rate_limit import per_client_limit
+
+# Brute-force / credential-stuffing throttles (audit, Oct 2026: none existed).
+# Per worker process -- see core/rate_limit.py for the stated limitation.
+_login_limit = Depends(per_client_limit("auth-login", 10, 60))
+_signup_limit = Depends(per_client_limit("auth-signup", 5, 3600))
+_reset_limit = Depends(per_client_limit("auth-reset", 5, 3600))
+_refresh_limit = Depends(per_client_limit("auth-refresh", 60, 60))
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator
 import re
@@ -48,7 +57,7 @@ from services.audit_service import create_audit_log
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/signup", response_model=AuthResponse)
+@router.post("/signup", response_model=AuthResponse, dependencies=[_signup_limit])
 async def signup(user_data: UserCreate, request: Request):
     """
     Register a new user account.
@@ -69,7 +78,7 @@ async def signup(user_data: UserCreate, request: Request):
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, dependencies=[_login_limit])
 async def login(credentials: UserLogin, request: Request):
     """
     Authenticate with email and password.
@@ -88,7 +97,7 @@ async def login(credentials: UserLogin, request: Request):
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
-@router.post("/refresh")
+@router.post("/refresh", dependencies=[_refresh_limit])
 async def refresh(token_data: TokenRefresh, request: Request):
     """
     Refresh access token using refresh token.
@@ -306,7 +315,7 @@ class PasswordResetConfirm(BaseModel):
         return v
 
 
-@router.post("/password-reset/request")
+@router.post("/password-reset/request", dependencies=[_reset_limit])
 async def request_reset(
     data: PasswordResetRequest,
     request: Request,
@@ -341,7 +350,7 @@ async def validate_reset(token: str):
     return {"valid": True}
 
 
-@router.post("/password-reset/confirm")
+@router.post("/password-reset/confirm", dependencies=[_reset_limit])
 async def confirm_reset(
     data: PasswordResetConfirm,
     request: Request,

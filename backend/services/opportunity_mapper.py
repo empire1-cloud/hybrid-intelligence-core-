@@ -12,6 +12,8 @@ import asyncio
 from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel
+from services.engine_errors import EngineOutputError
+from services.model_policy import resolve_engine_model
 
 load_dotenv()
 
@@ -88,7 +90,7 @@ Return ONLY the JSON object. No other text."""
     def _create_chat(cls, model: str = None) -> LlmChat:
         model = model or cls.DEFAULT_MODEL
         api_key = cls._get_api_key()
-        provider, model_name = cls.MODEL_CONFIG.get(model, cls.MODEL_CONFIG[cls.DEFAULT_MODEL])
+        model, provider, model_name = resolve_engine_model(model, cls.MODEL_CONFIG, cls.DEFAULT_MODEL)
         
         chat = LlmChat(
             api_key=api_key,
@@ -153,23 +155,13 @@ Return ONLY the JSON object. No other text."""
             
             return json.loads(response)
         except json.JSONDecodeError:
-            # Return structured fallback
-            return {
-                "context_summary": f"Opportunity analysis for: {situation}",
-                "opportunities": [
-                    {
-                        "name": "Retry Analysis",
-                        "description": "Response parsing failed - retry with clearer situation description",
-                        "impact": "high",
-                        "effort": "low",
-                        "time_to_value": "immediate",
-                        "dependencies": [],
-                        "risks": ["May still fail if input is too vague"]
-                    }
-                ],
-                "top_3_opportunities": ["Retry Analysis"],
-                "recommended_next_move": "Provide a more specific situation description"
-            }
+            # Honesty fix (audit, Oct 2026): this previously returned a hardcoded
+            # placeholder as a successful result -- billed, and indistinguishable
+            # from real output. Raise like Strategy/Plan/Analysis already do.
+            raise EngineOutputError(
+                "Opportunity Mapper Engine returned output that did not parse as JSON.",
+                response_text=response if isinstance(response, str) else str(response),
+            )
     
     @classmethod
     def map_opportunities(

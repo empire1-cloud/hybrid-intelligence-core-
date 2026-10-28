@@ -17,7 +17,7 @@ from core.dependencies import get_current_user, get_current_team
 from database import teams_collection
 from services.api_key_service import get_api_key_context
 from services.execution_logger_db import log_execution
-from services.usage_service import check_usage_limit
+from services.usage_service import check_usage_limit, reserve_execution, UsageLimitError  # noqa: F401
 
 
 engine_security = HTTPBearer(auto_error=False)
@@ -163,8 +163,23 @@ async def enforce_engine_subscription(
     is_execution = request.method in {"POST", "PUT", "PATCH"}
     if is_execution:
         context.require_write()
-        await check_usage_limit(context.team_id, "executions", 1)
+        # Atomic claim (see usage_service.reserve_execution). The middleware
+        # releases the slot if the execution then fails.
+        try:
+            reserved = await reserve_execution(context.team_id, 1)
+        except UsageLimitError as exc:
+            # Previously escaped unhandled and surfaced as a generic 500.
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "USAGE_LIMIT_REACHED",
+                    "message": exc.message,
+                    "current": exc.current,
+                    "limit": exc.limit,
+                },
+            )
         request.state.hic_execution_pending = True
+        request.state.hic_execution_reserved = reserved
 
     request.state.engine_context = context
     return context

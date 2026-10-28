@@ -5,6 +5,7 @@ The master orchestrator that coordinates, executes, and maintains
 the multi-model AI pipeline composed of specialized engines.
 """
 
+import contextvars
 from enum import Enum
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
@@ -16,6 +17,13 @@ from services.plan_builder import PlanBuilderEngine
 from services.canon_enforcer import CanonEnforcer
 from services.drift_monitor import DriftMonitor
 from services.error_handler import ErrorHandler, PipelineStage
+from services.secret_redaction import redact_obj
+
+# Team that owns the execution currently running in this task. Set by the
+# /core/* routes. The core is a process-wide singleton, so without this the
+# in-memory log mixed every tenant's prompts together and GET /api/core/log
+# returned them to any authenticated team (audit finding, Oct 2026).
+CURRENT_TEAM_ID: contextvars.ContextVar = contextvars.ContextVar("hic_current_team_id", default=None)
 
 
 class TaskType(Enum):
@@ -205,8 +213,16 @@ class HybridIntelligenceCore:
             force_model="claude-sonnet-4.5",
         )
 
-    def get_execution_log(self, limit: int = 100) -> List[Dict]:
-        return self.execution_log[-limit:]
+    def get_execution_log(self, limit: int = 100, team_id: Optional[str] = None) -> List[Dict]:
+        """Return recent entries. With ``team_id``, only that team's entries.
+
+        Entries recorded without a team (pre-fix, or in-process callers) are
+        never returned to a team-scoped reader.
+        """
+        if team_id is None:
+            return self.execution_log[-limit:]
+        scoped = [e for e in self.execution_log if e.get("team_id") == team_id]
+        return scoped[-limit:]
 
     def get_system_status(self) -> Dict:
         return {
@@ -238,11 +254,12 @@ class HybridIntelligenceCore:
         success: bool,
     ):
         self.execution_log.append({
+            "team_id": CURRENT_TEAM_ID.get(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "prompt_preview": prompt[:100] + "..." if len(prompt) > 100 else prompt,
             "task_type": task_type.value if task_type else "unknown",
             "success": success,
-            "metadata": metadata,
+            "metadata": redact_obj(metadata),
         })
 
         if len(self.execution_log) > 1000:
