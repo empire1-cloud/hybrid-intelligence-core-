@@ -10,9 +10,20 @@ import requests
 import os
 import time
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-if not BASE_URL:
-    BASE_URL = "https://genesis-engine-4.preview.emergentagent.com"
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost').rstrip('/')
+
+
+def _sla113_server_up():
+    try:
+        return requests.get(f"{BASE_URL}/api/sla113/universes", timeout=2).status_code == 200
+    except requests.RequestException:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _sla113_server_up(),
+    reason=f"No SLA113 server at {BASE_URL}; set REACT_APP_BACKEND_URL to run these tests",
+)
 
 
 class TestGameTemplates:
